@@ -79,7 +79,7 @@ def _retry_manual(fn: Any, *args: Any, **kwargs: Any) -> Any:
             )
             time.sleep(sleep_time)
             delay *= 2.0
-    raise last_exc  # type: ignore[misc]
+    raise RuntimeError(f"GCS upload failed after {_MAX_ATTEMPTS} attempts") from last_exc
 
 
 if _TENACITY_AVAILABLE:

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 import torch
 import torch.nn.functional as F
 from torch import Tensor
+
+logger = logging.getLogger(__name__)
 
 
 class FreeEnergyLoss:
@@ -86,6 +90,11 @@ class FreeEnergyLoss:
             keys: ``"cross_entropy"``, ``"l1_sparsity"``, ``"variance_hinge"``,
             ``"variance"``, and ``"gamma"``.
         """
+        # Guard against NaN/Inf in Z_star before computing loss terms
+        if torch.isnan(Z_star).any() or torch.isinf(Z_star).any():
+            logger.warning("NaN/Inf detected in Z_star; clamping before loss computation")
+            Z_star = torch.nan_to_num(Z_star, nan=0.0, posinf=1.0, neginf=-1.0)
+
         # --- Cross-entropy ---
         ce_loss = F.cross_entropy(logits, targets)
 

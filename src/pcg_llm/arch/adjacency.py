@@ -32,6 +32,8 @@ class BlockSparseAdjacency:
         # Float32 structural weights — zero for inactive edges.
         self.W_structure: Tensor = torch.zeros(num_blocks, num_blocks, dtype=torch.float32)
         self._frozen: bool = False
+        # Cached float32 mask — invalidated whenever self.mask changes.
+        self._mask_float: Tensor | None = None
 
     # ------------------------------------------------------------------
     # Initialisation
@@ -55,6 +57,7 @@ class BlockSparseAdjacency:
         self.mask = rand >= sparsity
         weights = torch.randn(self.num_blocks, self.num_blocks)
         self.W_structure = torch.where(self.mask, weights, torch.zeros_like(weights))
+        self._mask_float = None  # invalidate cache
 
     # ------------------------------------------------------------------
     # Properties
@@ -100,11 +103,12 @@ class BlockSparseAdjacency:
         Returns:
             Aggregated messages of the same shape as *Z*.
         """
-        # mask: [num_blocks, num_blocks] → [1, num_blocks, num_blocks, 1]
-        mask_f = self.mask.float().to(Z.device)  # [N, N]
-        # Z: [B, N, D]; we want out[b, i, d] = sum_j mask[i,j] * Z[b, j, d]
-        # Einsum: out[b, i, d] = mask[i, j] * Z[b, j, d] summed over j
-        return torch.einsum("ij,bjd->bid", mask_f, Z)
+        # Build/reuse a cached float32 mask on the correct device.
+        # Recompute only when the device changes (mask is moved once at trainer init).
+        if self._mask_float is None or self._mask_float.device != Z.device:
+            self._mask_float = self.mask.float().to(Z.device)
+        # Z: [B, N, D]; out[b, i, d] = sum_j mask[i,j] * Z[b, j, d]
+        return torch.einsum("ij,bjd->bid", self._mask_float, Z)
 
     # ------------------------------------------------------------------
     # RigL drop-and-grow
@@ -140,6 +144,11 @@ class BlockSparseAdjacency:
         """
         if self._frozen:
             return
+
+        if gradients.shape != self.mask.shape:
+            raise ValueError(
+                f"gradients shape {gradients.shape} does not match mask shape {self.mask.shape}"
+            )
 
         # ---- Drop phase ----
         active_mask = self.mask  # [N, N] bool
@@ -181,6 +190,7 @@ class BlockSparseAdjacency:
                 self.W_structure[grow_coords[:, 0], grow_coords[:, 1]] = grad_flat[
                     grow_coords[:, 0], grow_coords[:, 1]
                 ]
+        self._mask_float = None  # invalidate float cache after topology change
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -215,3 +225,4 @@ class BlockSparseAdjacency:
         self.mask = d["mask"]
         self.W_structure = d["W_structure"]
         self._frozen = bool(d["frozen"])
+        self._mask_float = None  # invalidate float cache

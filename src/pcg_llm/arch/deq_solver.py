@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import cast
 
 import torch
 from torch import Tensor
+
+logger = logging.getLogger(__name__)
 
 
 def apply_spectral_norm_constraint(W: Tensor) -> Tensor:
@@ -21,6 +24,9 @@ def apply_spectral_norm_constraint(W: Tensor) -> Tensor:
     Returns:
         W unchanged if max_sv <= 1.0, otherwise W / max_sv.
     """
+    if torch.isnan(W).any() or torch.isinf(W).any():
+        logger.warning("NaN/Inf detected in weight matrix; zeroing before spectral norm")
+        W = torch.nan_to_num(W, nan=0.0, posinf=1.0, neginf=-1.0)
     # svd returns (U, S, Vh); S contains singular values in descending order
     _, S, _ = torch.linalg.svd(W, full_matrices=False)
     max_sv = S[0]
@@ -36,6 +42,7 @@ def _anderson_step(
     history_z: list[Tensor],
     history_r: list[Tensor],
     m: int,
+    beta: float = 1e-4,
 ) -> tuple[Tensor, Tensor]:
     """Perform one Anderson mixing step.
 
@@ -75,10 +82,11 @@ def _anderson_step(
     ones = torch.ones(k, device=z.device, dtype=z.dtype)
     try:
         # Solve (R R^T) α = ones, then normalise
-        alpha = torch.linalg.solve(RTR + 1e-8 * torch.eye(k, device=z.device, dtype=z.dtype), ones)
+        alpha = torch.linalg.solve(RTR + beta * torch.eye(k, device=z.device, dtype=z.dtype), ones)
         alpha = alpha / alpha.sum()
-    except Exception:
-        # Fall back to plain Picard if solve fails
+    except Exception as _lsq_exc:
+        # Fall back to plain Picard step if the least-squares solve is singular
+        logger.debug("Anderson LSQ solve failed (falling back to Picard): %s", _lsq_exc)
         alpha = torch.zeros(k, device=z.device, dtype=z.dtype)
         alpha[-1] = 1.0
 
@@ -153,7 +161,9 @@ class ConstrainedDEQSolver:
 
     Args:
         anderson_window: Number of previous iterates kept in the Anderson window.
-        anderson_beta: Damping coefficient β applied to the Anderson step.
+        anderson_beta: Tikhonov regularisation coefficient β for the Anderson
+            least-squares solve (``RTR + β·I``).  Prevents singular normal
+            equations; 1e-4 is the research-validated default.
         max_iter: Maximum iterations for the primary Anderson solver.
         solver_tolerance: Residual-norm threshold for declaring convergence.
         broyden_max_iter: Maximum iterations for the Broyden fallback.
@@ -167,7 +177,7 @@ class ConstrainedDEQSolver:
         max_iter: int = 12,
         solver_tolerance: float = 1e-2,
         broyden_max_iter: int = 50,
-        use_broyden_fallback: bool = True,
+        use_broyden_fallback: bool = False,
     ) -> None:
         self.anderson_window = anderson_window
         self.anderson_beta = anderson_beta
@@ -292,10 +302,14 @@ class ConstrainedDEQSolver:
 
         for step in range(self.max_iter):
             z_next, residual = _anderson_step(
-                f_theta, z, x, history_z, history_r, self.anderson_window
+                f_theta,
+                z,
+                x,
+                history_z,
+                history_r,
+                self.anderson_window,
+                beta=self.anderson_beta,  # used as Tikhonov regularisation in LSQ solve
             )
-            # Apply damping: z_{k+1} = z_k + β * (z_next - z_k)
-            z_next = z + self.anderson_beta * (z_next - z) if self.anderson_beta != 1.0 else z_next
             r_norm = residual.norm().item()
             if r_norm < self.solver_tolerance:
                 return z_next, {"converged": True, "solver_steps": step + 1, "method": "anderson"}

@@ -148,11 +148,20 @@ class EAGLEExtrapolationHead(nn.Module):
         The expansion threshold includes a small hysteresis margin
         (``eagle_accept_threshold + 0.05``) to avoid rapid oscillation.
         Expansion is capped at ``_DRAFT_LEN_MAX`` (16).
+
+        Also rebuilds ``_draft_proj`` to match the new ``draft_len`` so that
+        ``generate_draft_tree`` output shape stays consistent with the attribute.
         """
         expand_threshold = self.eagle_accept_threshold + _DRAFT_LEN_EXPAND_THRESHOLD_DELTA
         if self.accept_rate_ema >= expand_threshold and self.draft_len < _DRAFT_LEN_MAX:
             old_len = self.draft_len
             self.draft_len += 1
+            # Rebuild the draft projection layer to match the new draft_len.
+            # Preserve device and dtype of the existing layer.
+            old_weight = self._draft_proj.weight
+            self._draft_proj = nn.Linear(self.hidden_dim, self.draft_len).to(
+                device=old_weight.device, dtype=old_weight.dtype
+            )
             logger.info(
                 "EAGLE draft_len expanded %d → %d (accept_rate_ema=%.3f)",
                 old_len,
