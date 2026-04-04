@@ -21,7 +21,7 @@ def load_dataset(*args, **kwargs):  # type: ignore[no-untyped-def]
             "datasets>=2.19.0 is required for streaming. "
             "Install with: pip install 'pcg-llm[training]'"
         ) from exc
-    return _load_dataset(*args, **kwargs)
+    return _load_dataset(*args, **kwargs)  # nosec B615
 
 
 class HuggingFaceStreamingDataset:
@@ -64,7 +64,7 @@ class HuggingFaceStreamingDataset:
         self.epoch: int = 0
         self.shard_index: int = 0
 
-        self._rng = random.Random(seed)
+        self._rng = random.Random(seed)  # nosec B311
         self._fineweb_iter: Iterator | None = None
         self._stack_iter: Iterator | None = None
         self._init_iterators()

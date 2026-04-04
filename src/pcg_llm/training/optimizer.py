@@ -15,6 +15,7 @@ References:
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from typing import overload
 
 import torch
 from torch import Tensor
@@ -96,8 +97,14 @@ class MuonOptimizer(Optimizer):
         defaults = {"lr": lr, "momentum": momentum, "ns_steps": ns_steps}
         super().__init__(param_list, defaults)
 
+    @overload
+    def step(self, closure: None = ...) -> None: ...
+
+    @overload
+    def step(self, closure: Callable[[], float]) -> float: ...
+
     @torch.no_grad()
-    def step(self, closure: Callable[[], float] | None = None) -> float | None:  # type: ignore[override]
+    def step(self, closure: Callable[[], float] | None = None) -> float | None:
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -191,9 +198,17 @@ class HybridOptimizer:
         for opt in self._optimizers:
             opt.zero_grad(set_to_none=set_to_none)
 
-    def step(self, closure: Callable[[], float] | None = None) -> None:
+    @overload
+    def step(self, closure: None = ...) -> None: ...
+
+    @overload
+    def step(self, closure: Callable[[], float]) -> float: ...
+
+    def step(self, closure: Callable[[], float] | None = None) -> float | None:
+        result: float | None = None
         for opt in self._optimizers:
-            opt.step(closure)
+            result = opt.step(closure)
+        return result
 
     def state_dict(self) -> dict:
         return {

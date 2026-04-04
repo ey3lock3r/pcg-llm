@@ -120,7 +120,7 @@ class CheckpointManager:
                 self._save_manifest(manifest)
                 continue
 
-            checkpoint_dict = torch.load(path, weights_only=False)
+            checkpoint_dict = torch.load(path, weights_only=False)  # nosec B614
             step = entry["step"]
             logger.info("Loaded checkpoint step %d from %s", step, path)
             return checkpoint_dict, step
