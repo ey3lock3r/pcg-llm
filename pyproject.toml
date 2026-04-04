@@ -3,7 +3,7 @@ name = "pcg-llm"
 version = "0.1.0"
 description = "Predictive Coding Graph Language Model — a non-hierarchical, dynamically routed neural architecture using Inference Learning and DEQ solving"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"  # 3.13 is the dev/CI standard; 3.12 minimum for Kaggle runtime
 license = {text = "MIT"}
 authors = [
     {name = "pcg-llm contributors"}
