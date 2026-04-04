@@ -110,6 +110,7 @@ class BlockSparseAdjacency:
     # RigL drop-and-grow
     # ------------------------------------------------------------------
 
+    @torch.no_grad()
     def drop_and_grow(
         self,
         gradients: Tensor,

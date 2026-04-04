@@ -1,8 +1,10 @@
 """BenchmarkHarness — wraps lm-evaluation-harness for PCG-LLM evaluation.
 
-Supports 4-bit GPTQ quantization via bitsandbytes for T4-compatible runs.
-Both ``lm_eval`` and ``bitsandbytes`` are optional; graceful ImportError is
-raised at call time when they are absent.
+Supports 4-bit NF4/FP4 weight quantization via bitsandbytes for T4-compatible
+runs (FR-031; this is NOT GPTQ — quantization is applied at load time via
+bitsandbytes, not as a post-training step).  Both ``lm_eval`` and
+``bitsandbytes`` are optional; graceful ImportError is raised at call time
+when they are absent.
 """
 
 from __future__ import annotations
@@ -39,8 +41,8 @@ class BenchmarkHarness:
     Args:
         checkpoint_path: Local path or GCS URI to the ``.pt`` checkpoint file.
         quantize: Quantization mode.  Currently only ``"4bit"`` is supported
-            (uses bitsandbytes GPTQ inference).  Pass ``"none"`` for full
-            precision (no bitsandbytes required).
+            (uses bitsandbytes NF4/FP4 weight loading — not GPTQ).  Pass
+            ``"none"`` for full precision (no bitsandbytes required).
     """
 
     def __init__(self, checkpoint_path: str, quantize: str = "4bit") -> None:

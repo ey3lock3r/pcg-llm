@@ -43,7 +43,7 @@ Build the full PCG-LLM training system on top of the v3.0 architecture specifica
 - No custom CUDA — all operations must be implementable with Triton or standard PyTorch
 
 **Scale/Scope**:
-- Tiny PCG: 50–100M parameters, d=512, 32×32 blocks, 70% initial sparsity
+- Tiny PCG: 50–100M parameters, d=512, 32×32 blocks, 85% initial sparsity (FR-004; ≥80% to satisfy SC-004 hard bound from step 0)
 - 3B PCG: 3.1B parameters, d=3072, 64×64 blocks, 90% initial sparsity
 - Training corpus: 100B tokens FineWeb-Edu + The Stack v2 subset
 
@@ -152,11 +152,13 @@ tests/
     └── test_flex_attention.py   # FlexAttention mask (pytest.mark.gpu)
 
 benchmarks/
-├── bench_deq_solver.py          # wall-clock + VRAM for DEQ (baseline reference, T060)
-├── bench_rigl_cycle.py          # Drop-and-Grow step timing
-├── bench_eagle_throughput.py    # EAGLE draft + verification tokens/sec (SC-010)
+├── bench_deq_solver.py          # wall-clock + VRAM for DEQ; created by T060 (Phase 3), extended by T037 (Phase 4)
+├── bench_rigl_cycle.py          # Drop-and-Grow step timing (T037)
+├── bench_eagle_throughput.py    # EAGLE draft + verification tokens/sec (SC-010, T037)
+├── bench_ddp_vs_single.py       # single-GPU vs DDP 2× throughput comparison (T062)
 └── results/
-    └── bench_deq_solver_baseline.json # Written by T060 before Phase 4 optimization PRs
+    ├── bench_deq_solver_baseline.json  # Written by T060 (flags-off baseline, before Phase 4)
+    └── ddp_vs_single_baseline.json     # Written by T062
 ```
 
 **Structure Decision**: Single-project layout. `src/pcg_llm/` is organized by concern (arch, training, checkpointing, data, evaluation, monitoring) rather than by model size. All size-specific parameters (d, block_size, sparsity) are controlled via `TrainingConfig` at runtime. Tests are separated by speed/hardware requirement using pytest markers to allow fast unit runs on Kaggle/Colab without triggering GPU or slow tests.
@@ -198,3 +200,18 @@ The following spec.md sections were updated (no new requirements added — all a
 - **SC-010**: Points to T037 for verification
 - **Assumptions**: torchdeq PyTorch compatibility updated to 2.5+
 - **Key Entities**: Training Curriculum State — "gating temperature" removed
+
+---
+
+## Second Remediation Round (post-speckit-analyze, 2026-04-05)
+
+A second `/speckit-analyze` pass identified 11 findings (2 CRITICAL, 3 HIGH, 5 MEDIUM, 3 LOW). The 6 edits below address all CRITICAL and HIGH issues. No new tasks were required; all fixes are description corrections or metadata updates.
+
+| Finding | Severity | Fix Applied |
+|---------|----------|-------------|
+| C1: Tiny PCG initial sparsity 70% (plan.md) conflicts with FR-004 85% and SC-004 ≥80% hard bound | CRITICAL | plan.md Scale/Scope updated to 85% (with FR-004/SC-004 citation) |
+| C2: T060 (Phase 3) runs `bench_deq_solver.py` created by T037 (Phase 4) — circular dependency | CRITICAL | T060 now owns script creation + flags-off baseline; T037 extends the script with flags-on comparison; file path standardized to `bench_deq_solver_baseline.json` throughout |
+| H1: FR-017 gradient checkpointing has test (T057) but no implementation task | HIGH | T034 description extended: `grad_checkpoint=True` path now explicitly scoped (torch.utils.checkpoint wrapping of DEQ solver calls) |
+| H2: T048 describes "4-bit GPTQ" but FR-031 mandates NF4/FP4 via bitsandbytes (not GPTQ) | HIGH | T048 description corrected to "NF4/FP4 weight quantization (NOT GPTQ)" with FR-031 reference |
+| H3: tasks.md summary stated 60 tasks / 21 Phase-3 tasks; T061–T062 not counted | HIGH | Summary table updated: 62 total, Phase 3 = 23 tasks, 31 parallelizable, 4 benchmark scripts |
+| M5: T032 claimed to scale `base_lr` "in PCGTrainer" (wrong module boundary) | MEDIUM | T034 now explicitly owns the `base_lr × 10` auto-scaling; T032 responsibility clarified |

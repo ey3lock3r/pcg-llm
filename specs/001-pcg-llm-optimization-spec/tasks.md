@@ -77,7 +77,7 @@
 - [X] T055 [P] [US1] Write and pass unit tests for FR-018 CPU offload in `tests/unit/test_adjacency.py`: `BlockSparseAdjacency` mask tensor can be moved to CPU mid-forward and back to GPU for drop-and-grow without data corruption; `message_pass(Z)` correctly handles Z on GPU while mask is on CPU (auto-moves mask to Z.device)
 - [X] T056 [P] [US1] Write and pass unit tests for FR-019 gradient accumulation in `tests/unit/test_trainer_unit.py`: when `grad_accum_steps=4`, optimizer step is called once every 4 batches; loss value matches single-step with 4× batch size (up to BF16 tolerance); step counter increments every batch (not every optimizer step)
 
-- [X] T060 [P] [US1] Capture DEQ solver baseline timing with all optimization flags OFF (v3.0 behavior): run `benchmarks/bench_deq_solver.py --flags-off` and write results to `benchmarks/results/deq_solver_baseline.json`; this MUST run before Phase 4 optimization tasks to establish the comparison baseline required by constitution Principle V and SC-007
+- [X] T060 [P] [US1] Create `benchmarks/bench_deq_solver.py` and capture DEQ solver baseline timing with all optimization flags OFF (v3.0 behavior): write `benchmarks/results/bench_deq_solver_baseline.json`; this MUST run before Phase 4 optimization tasks to establish the comparison baseline required by constitution Principle V and SC-007. *Note: T037 (Phase 4) extends this script with optimized-flags comparison runs; T060 owns the initial script creation and flags-off baseline capture.*
 - [X] T061 [P] [US1] Write DDP unit tests in `tests/unit/test_trainer_unit.py` (class `TestDDPSupport`): `_is_ddp=False` by default when `LOCAL_RANK` not set; `W_structure.requires_grad=True` after `__init__`; `W_structure.grad is not None` after `train_step` backward (regression for missing `requires_grad_(True)` bug); `_save_checkpoint` skipped when `_rank != 0`; `dist.all_reduce` called in `_optimizer_step` when DDP active; `dist.broadcast` called in `_broadcast_state_after_resume`; RigL mask broadcast triggered in `train_step` when DDP active; DDP+grad_accum optimizer step count verified (class `TestDDPGradAccumInteraction`)
 - [X] T062 [P] [US1] Create `benchmarks/bench_ddp_vs_single.py`: measure tokens/s and peak VRAM for single-GPU vs DDP 2× on Tiny PCG dimensions; structured comparison table printed to stdout; writes `benchmarks/results/ddp_vs_single_baseline.json` with `--baseline` flag; skips DDP measurement gracefully when `torchrun` or 2nd GPU is unavailable; satisfies constitution Principle V for DDP throughput claims
 
@@ -102,10 +102,10 @@
 - [X] T031 [US2] Implement `src/pcg_llm/training/optimizer.py`: `MuonOptimizer` — Nesterov momentum + Newton-Schulz orthogonalization (5 iterations, standard approximation) for matrix parameters; `HybridOptimizer` — applies `MuonOptimizer` to all `nn.Linear.weight` parameters and `torch.optim.AdamW` (or `bitsandbytes.optim.AdamW8bit` when `optimizer_bits=8`) to all other parameters; automatic learning rate scaling (Muon LR = 10× base_lr); pass T028
 - [X] T032 [US2] Implement `src/pcg_llm/training/normalization.py`: `nGPTNorm` — normalizes input tensor to unit norm along the last dimension; applied inside `f_theta` (after each message-passing step in `PCGNode`); compatible with BF16; when `normalize="ngpt"`, automatically scales base_lr by 10× in `PCGTrainer`; variance hinge interpretation updated (angular spread mode); pass existing unit tests
 - [X] T033 [US2] Implement `src/pcg_llm/arch/monarch.py`: `MonarchProjection` — two sequential `torch.bmm` butterfly factor layers; weight init via `nn.init.orthogonal_` on each factor; `forward(x)` applies P₁·B₁·P₂·B₂ sequence; `torch.compile`-compatible (no Python loops in forward); Spectral Normalization on each factor independently; used in place of `nn.Linear` inside DEQ projection layers when `projection="monarch"`; pass T029
-- [X] T034 [US2] Integrate Muon + nGPT + Monarch + 8-bit optimizer flags into `src/pcg_llm/training/trainer.py`: read flags from `TrainingConfig`; instantiate correct optimizer, normalization, and projection layers; log which optimizations are active at startup; ensure `projection="dense"` path produces identical output to pre-optimization baseline (regression test)
+- [X] T034 [US2] Integrate Muon + nGPT + Monarch + 8-bit optimizer + gradient checkpointing flags into `src/pcg_llm/training/trainer.py`: read flags from `TrainingConfig`; instantiate correct optimizer, normalization, and projection layers; when `normalize="ngpt"`, multiply `config.base_lr` by 10 before passing to optimizer (FR-013 auto-scaling); when `grad_checkpoint=True`, wrap DEQ solver calls in `torch.utils.checkpoint.checkpoint` to trade +35% compute for 60-70% peak VRAM reduction (FR-017); log which optimizations are active at startup; ensure `projection="dense"` path produces identical output to pre-optimization baseline (regression test); pass T057
 - [X] T035 [US2] Implement `src/pcg_llm/arch/eagle_head.py`: `EAGLEExtrapolationHead` — single transformer block (`nn.MultiheadAttention` + FFN) operating on PCG penultimate latent states; `generate_draft_tree(Z_penultimate)` → `EAGLEDraftTree` of shape `[B, K, draft_len, d]`; uses FlexAttention block-local mask (64-token window + global summary token at position 0) when `torch.version >= "2.5"`, falls back to causal mask otherwise; `accept_rate_ema` tracked and logged; `draft_len` auto-expanded when EMA > `eagle_accept_threshold`; pass T030
 - [X] T036 [US2] Integrate EAGLE Head into inference path in `src/pcg_llm/training/trainer.py` and `__main__.py`: EAGLE head runs during `evaluate` subcommand; `PCGTrainer.generate(prompt_tokens)` method; acceptance rate reported to `TrainingMetrics`
-- [X] T037 [US2] Create benchmark suite — `benchmarks/bench_deq_solver.py` (wall-clock + peak VRAM for 100 DEQ solve calls at Tiny PCG dimensions; baseline vs. optimized), `benchmarks/bench_rigl_cycle.py` (Drop-and-Grow step timing at 90% sparsity), `benchmarks/bench_eagle_throughput.py` (EAGLE draft + verification tokens/sec vs. greedy decoding); each benchmark prints a structured summary table and writes `benchmarks/results/{name}_baseline.json` on first run
+- [X] T037 [US2] Extend benchmark suite — expand `benchmarks/bench_deq_solver.py` (created in T060) with optimized-flags comparison path; create `benchmarks/bench_rigl_cycle.py` (Drop-and-Grow step timing at 90% sparsity) and `benchmarks/bench_eagle_throughput.py` (EAGLE draft + verification tokens/sec vs. greedy decoding); each new script prints a structured summary table; capture flags-on results after all Phase 4 optimizations are integrated and confirm ≥20% wall-clock improvement over T060 baseline
 - [X] T038 [P] [US2] Write and pass GPU tests `tests/gpu/test_block_sparse.py` and `tests/gpu/test_flex_attention.py` (`@pytest.mark.gpu`): block-sparse matmul via Triton kernel produces same output as dense equivalent (tolerance 1e-3); FlexAttention block-local mask has zero attention weight between tokens in different partitions and full attention within partition
 
 **Checkpoint**: All optimization flags active, benchmarks show ≥20% improvement, EAGLE head generates and verifies draft trees. US2 independently testable.
@@ -151,7 +151,7 @@
 - [X] T045 [US4] Implement `src/pcg_llm/monitoring/metrics.py`: `TrainingMetrics` — dataclass for all metrics from data-model entity 6; `record_step(step, solver_steps, sparsity, node_variance, eagle_rate, losses, gamma, rigl_state, vram_gb, throughput_tps)`; `check_alerts()` emits `logging.warning` for all threshold violations; `to_dict()` for W&B logging; pass T044
 - [X] T046 [US4] Integrate W&B logging into `src/pcg_llm/training/trainer.py`: call `wandb.log(metrics.to_dict(), step=step)` when `config.wandb_project is not None`; `wandb.init()` at training start with config dict; W&B is optional (no error when `wandb` not installed — guard with `try/except ImportError`)
 - [X] T047 [US4] Add disk quota monitor to `src/pcg_llm/checkpointing/local.py`: `_check_disk_quota()` called before each checkpoint write; raises `DiskQuotaWarning` (logged, not raised) at < 1GB free; calls `trainer.graceful_shutdown()` at < 500MB free (saves checkpoint then exits with code 2)
-- [X] T048 [US4] Implement `src/pcg_llm/evaluation/harness.py`: `BenchmarkHarness` — wraps `lm_eval.evaluator.simple_evaluate()`; loads model from checkpoint path; applies 4-bit GPTQ quantization when `quantize="4bit"` via `bitsandbytes`; runs requested benchmark tasks; returns structured results dict; outputs JSON to file or stdout; used by `evaluate` CLI subcommand; guards with graceful ImportError for `lm_eval`
+- [X] T048 [US4] Implement `src/pcg_llm/evaluation/harness.py`: `BenchmarkHarness` — wraps `lm_eval.evaluator.simple_evaluate()`; loads model from checkpoint path; applies 4-bit NF4/FP4 weight quantization (NOT GPTQ) via `bitsandbytes` when `quantize="4bit"` (FR-031: load checkpoint → apply bitsandbytes 4-bit quantization → run evaluator); runs requested benchmark tasks; returns structured results dict; outputs JSON to file or stdout; used by `evaluate` CLI subcommand; guards with graceful ImportError for `lm_eval`
 - [X] T049 [US4] Add EAGLE fine-tuning phase to `src/pcg_llm/training/trainer.py`: `fine_tune_eagle(steps=5000)` method that freezes PCG core, trains only `EAGLEExtrapolationHead` for N steps, monitors acceptance rate EMA, expands draft length from 4→8 when gate passes
 
 **Checkpoint**: All four custom metrics log to W&B, auto-γ nudging triggers on collapse, disk quota guard works, benchmark harness runs ARC/GSM8K. US4 independently testable.
@@ -265,17 +265,18 @@ Stream D: T059 (3-step DEQ fallback test, parallel — needs T016/T024)
 
 | Metric | Value |
 |---|---|
-| Total tasks | 60 |
+| Total tasks | 62 |
 | Phase 1 (Setup) | 4 tasks |
 | Phase 2 (Foundational) | 6 tasks |
-| Phase 3 (US1 — MVP) | 21 tasks (T011–T027 + T054–T056 + T060) |
+| Phase 3 (US1 — MVP) | 23 tasks (T011–T027 + T054–T056 + T060–T062) |
 | Phase 4 (US2 — Optimizations) | 11 tasks |
 | Phase 5 (US3 — GCP) | 8 tasks (T039–T043 + T057–T059) |
 | Phase 6 (US4 — Monitoring) | 6 tasks |
 | Phase 7 (Polish) | 4 tasks |
-| Parallelizable tasks [P] | 29 tasks |
+| Parallelizable tasks [P] | 31 tasks |
 | TDD test tasks | 23 tasks (must fail before implementation) |
 | New source files | 18 modules across 6 packages |
 | New test files | 11 test files |
-| New benchmark files | 3 benchmark scripts |
+| New benchmark files | 4 benchmark scripts (includes bench_ddp_vs_single.py) |
 | *Tasks added by speckit-analyze remediation* | *7 tasks: T054–T060* |
+| *Tasks added by DDP amendment (2026-04-04)* | *2 tasks: T061–T062* |
