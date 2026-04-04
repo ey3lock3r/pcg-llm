@@ -89,8 +89,7 @@ class TrainingConfig:
         ):
             if abs(fw + sv - 1.0) > 1e-9:
                 raise ValueError(
-                    f"Mixing fractions must sum to 1.0 at epoch {i}, "
-                    f"got {fw} + {sv} = {fw + sv}"
+                    f"Mixing fractions must sum to 1.0 at epoch {i}, got {fw} + {sv} = {fw + sv}"
                 )
 
         # Block size must divide max_seq_len

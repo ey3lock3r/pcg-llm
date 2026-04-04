@@ -59,7 +59,7 @@ class TestRigLSparsityScheduleBasic:
         for i in range(len(fractions) - 1):
             assert (
                 fractions[i] >= fractions[i + 1]
-            ), f"Fraction should be non-increasing: {fractions[i]} < {fractions[i+1]}"
+            ), f"Fraction should be non-increasing: {fractions[i]} < {fractions[i + 1]}"
 
 
 class TestRigLSparsityScheduleFreeze:

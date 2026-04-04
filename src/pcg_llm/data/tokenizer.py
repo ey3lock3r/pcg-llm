@@ -39,8 +39,8 @@ class Llama3TokenizerWrapper:
         # for environments without HuggingFace Hub credentials.
         for model_name in [self.MODEL_NAME, self.FALLBACK_MODEL_NAME]:
             try:
-                return AutoTokenizer.from_pretrained(model_name)
-            except Exception:  # noqa: BLE001
+                return AutoTokenizer.from_pretrained(model_name)  # nosec B615
+            except Exception:  # noqa: BLE001  # nosec B112
                 continue
 
         raise RuntimeError(

@@ -45,8 +45,7 @@ class LocalCheckpointBackend:
         free = usage.free
         if free < _500MB:
             logger.critical(
-                "Disk space critically low: %.1f MB free (< 500 MB). "
-                "Triggering graceful shutdown.",
+                "Disk space critically low: %.1f MB free (< 500 MB). Triggering graceful shutdown.",
                 free / (1024 * 1024),
             )
             if self._shutdown_callback is not None:

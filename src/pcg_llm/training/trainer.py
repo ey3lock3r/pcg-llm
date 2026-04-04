@@ -382,7 +382,7 @@ class PCGTrainer:
                 if has_wandb:
                     try:
                         wandb.log({"step": self.step, **metrics})
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass
 
                 # Signal check

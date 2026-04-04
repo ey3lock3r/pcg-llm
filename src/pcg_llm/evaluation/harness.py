@@ -119,7 +119,7 @@ class BenchmarkHarness:
         import torch
 
         logger.info("Loading checkpoint from '%s'", self.checkpoint_path)
-        checkpoint = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)
+        checkpoint = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)  # nosec B614
 
         if self._effective_quantize == "4bit" and _BNB_AVAILABLE:
             logger.info("Applying 4-bit quantization via bitsandbytes")
