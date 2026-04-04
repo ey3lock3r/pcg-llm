@@ -445,3 +445,175 @@ class TestGradientCheckpointing:
         metrics = trainer.train_step(batch)
         assert "loss_total" in metrics
         assert metrics["loss_total"] == metrics["loss_total"], "Loss must not be NaN"
+
+
+# ---------------------------------------------------------------------------
+# DDP multi-GPU support (T061) — all tests run in single-process mode via mocks
+# ---------------------------------------------------------------------------
+
+
+class TestDDPSupport:
+    """DDP multi-GPU support tests.
+
+    These tests run entirely in a single process — ``torch.distributed`` calls
+    are either absent (single-GPU path) or mocked so no real NCCL backend is
+    initialised.
+    """
+
+    def test_is_ddp_false_by_default(self, tmp_path: Path):
+        """Without LOCAL_RANK env var the trainer must operate single-process."""
+        import os
+
+        from pcg_llm.training.trainer import PCGTrainer
+
+        os.environ.pop("LOCAL_RANK", None)
+        config = _make_config(tmp_path)
+        trainer = PCGTrainer(config)
+        assert trainer._is_ddp is False
+        assert trainer._world_size == 1
+
+    def test_w_structure_requires_grad_after_init(self, tmp_path: Path):
+        """W_structure must have requires_grad=True immediately after __init__."""
+        from pcg_llm.training.trainer import PCGTrainer
+
+        config = _make_config(tmp_path)
+        trainer = PCGTrainer(config)
+        assert (
+            trainer.adjacency.W_structure.requires_grad
+        ), "W_structure.requires_grad must be True — it carries trainable edge weights"
+
+    def test_w_structure_receives_grad_after_train_step(self, tmp_path: Path):
+        """W_structure.grad must be populated after a forward-backward train_step.
+
+        Regression test: before the DDP fix, W_structure was a plain tensor
+        with requires_grad never set, so no gradients ever flowed to it.
+        """
+        from pcg_llm.training.trainer import PCGTrainer
+
+        config = _make_config(tmp_path)
+        trainer = PCGTrainer(config)
+        batch = torch.randint(0, 256, (2, 64))
+        trainer.train_step(batch)
+        assert trainer.adjacency.W_structure.grad is not None, (
+            "W_structure must receive gradients after train_step "
+            "(regression for missing requires_grad_(True) bug)"
+        )
+
+    def test_save_checkpoint_guarded_by_rank0(self, tmp_path: Path):
+        """_save_checkpoint must not write files when self._rank != 0."""
+        from pcg_llm.training.trainer import PCGTrainer
+
+        config = _make_config(tmp_path)
+        trainer = PCGTrainer(config)
+        # Simulate non-zero rank without launching a real process group
+        trainer._rank = 1
+        trainer._save_checkpoint(step=99)
+        pt_files = list(tmp_path.glob("step-*.pt"))
+        assert len(pt_files) == 0, "Non-rank-0 process must not write checkpoint files"
+
+    def test_optimizer_step_calls_all_reduce_in_ddp_mode(self, tmp_path: Path):
+        """_optimizer_step must call dist.all_reduce for W_structure.grad when DDP active."""
+        from unittest.mock import patch
+
+        from pcg_llm.training.trainer import PCGTrainer
+
+        config = _make_config(tmp_path)
+        trainer = PCGTrainer(config)
+        # Simulate DDP mode without a real process group
+        trainer._is_ddp = True
+        trainer._world_size = 2
+        trainer._rank = 0
+        # Provide a pre-computed gradient for W_structure
+        trainer.adjacency.W_structure.grad = torch.ones_like(trainer.adjacency.W_structure)
+        # Provide zero gradients for module params (required by clip_grad_norm_)
+        for p in trainer._raw_node.parameters():
+            if p.grad is None:
+                p.grad = torch.zeros_like(p)
+        for p in trainer._raw_output_proj.parameters():
+            if p.grad is None:
+                p.grad = torch.zeros_like(p)
+
+        with patch("pcg_llm.training.trainer.dist.all_reduce") as mock_all_reduce:
+            trainer._optimizer_step()
+
+        mock_all_reduce.assert_called_once()
+
+    def test_broadcast_state_after_resume_calls_broadcast(self, tmp_path: Path):
+        """_broadcast_state_after_resume must call dist.broadcast to sync state."""
+        from unittest.mock import patch
+
+        from pcg_llm.training.trainer import PCGTrainer
+
+        config = _make_config(tmp_path)
+        trainer = PCGTrainer(config)
+        trainer._is_ddp = True
+        trainer._rank = 0
+
+        with patch("pcg_llm.training.trainer.dist.broadcast") as mock_broadcast:
+            trainer._broadcast_state_after_resume()
+
+        assert (
+            mock_broadcast.call_count > 0
+        ), "dist.broadcast must be called at least once to sync step and model state"
+
+    def test_rigl_mask_broadcast_after_drop_and_grow(self, tmp_path: Path):
+        """RigL drop_and_grow must broadcast the updated mask in DDP mode."""
+        from unittest.mock import patch
+
+        from pcg_llm.training.trainer import PCGTrainer
+
+        # rigl_interval=1 → RigL triggers when self.step > 0 and step % 1 == 0
+        config = _make_config(tmp_path, rigl_interval=1)
+        trainer = PCGTrainer(config)
+        trainer._is_ddp = True
+        trainer._rank = 0
+        trainer.step = 1  # ensures step > 0 condition is met inside train_step
+
+        with patch("pcg_llm.training.trainer.dist.broadcast") as mock_broadcast:
+            # Also mock all_reduce (triggered by W_structure.grad in _optimizer_step)
+            with patch("pcg_llm.training.trainer.dist.all_reduce"):
+                batch = torch.randint(0, 256, (2, 64))
+                trainer.train_step(batch)
+
+        assert (
+            mock_broadcast.call_count > 0
+        ), "dist.broadcast must be called after drop_and_grow to sync mask across ranks"
+
+
+# ---------------------------------------------------------------------------
+# DDP + gradient accumulation interaction (M3)
+# ---------------------------------------------------------------------------
+
+
+class TestDDPGradAccumInteraction:
+    """Gradient accumulation must remain correct when DDP mode is simulated (M3)."""
+
+    def test_grad_accum_optimizer_step_count_with_ddp_flag(self, tmp_path: Path):
+        """optimizer.step fires once per accumulation window even with _is_ddp=True."""
+        from unittest.mock import patch
+
+        from pcg_llm.training.trainer import PCGTrainer
+
+        config = _make_config(tmp_path, grad_accum_steps=2)
+        trainer = PCGTrainer(config)
+        # Simulate DDP flag (world_size=1 so no real communication happens)
+        trainer._is_ddp = True
+        trainer._world_size = 1
+        trainer._rank = 0
+
+        step_count = [0]
+        original_step = trainer.optimizer.step
+
+        def counting_step(*args, **kwargs):
+            step_count[0] += 1
+            return original_step(*args, **kwargs)
+
+        trainer.optimizer.step = counting_step  # type: ignore[method-assign]
+
+        with patch("pcg_llm.training.trainer.dist.all_reduce"):
+            trainer.train(_make_loader(n=4), resume=False)
+
+        assert step_count[0] == 2, (
+            f"With grad_accum_steps=2 and 4 batches, optimizer.step should fire 2×, "
+            f"got {step_count[0]}"
+        )

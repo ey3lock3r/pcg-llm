@@ -37,6 +37,7 @@ An ML researcher with no cloud budget trains the Tiny PCG (50-100M parameters) e
 2. **Given** an interrupted training session (simulated by manually stopping the kernel at step 1,200), **When** the notebook is restarted and the training script is executed again, **Then** training resumes from the latest valid checkpoint (step 1,000 or 1,500) with identical loss trajectory continuing from that point.
 3. **Given** a completed 4-hour Tiny PCG run, **When** evaluated on a 50M-token validation slice, **Then** perplexity is at or below 50 and the solver step count per token averages at or below 8 (indicating proper convergence rather than iteration budget exhaustion).
 4. **Given** the DEQ solver is running with Spectral Normalization active, **When** the Lipschitz constant of any weight matrix is found to exceed 1.0 during a forward pass, **Then** Spectral Normalization re-normalizes that matrix before the solver runs and a warning is logged; the solver does not crash or diverge.
+5. **Given** the Kaggle Notebook Cell 5B is run with `torchrun --nproc_per_node=2`, **When** training starts with both T4 GPUs active via DistributedDataParallel, **Then** the trainer auto-detects DDP via the `LOCAL_RANK` environment variable, wraps `PCGNode` and `output_proj` in `DistributedDataParallel`, manually all-reduces `W_structure.grad` before each optimizer step (since `W_structure` is not a module parameter), broadcasts the RigL mask after each `drop_and_grow` cycle, and only rank-0 writes checkpoint files and W&B logs.
 
 ---
 

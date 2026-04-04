@@ -69,7 +69,7 @@
 - [X] T021 [US1] Implement `src/pcg_llm/checkpointing/local.py`: `LocalCheckpointBackend` — writes `{step}.pt.tmp` then renames to `{step}.pt`; monitors disk quota via `shutil.disk_usage` and triggers shutdown callback when < 500MB free; `list_checkpoints()` returns all `.pt` files in checkpoint dir (ignores `.tmp`); pass T014 sub-tests
 - [X] T022 [US1] Implement `src/pcg_llm/checkpointing/checkpoint.py`: `CheckpointManager` — orchestrates atomic save (build dict → write via backend → compute SHA-256 → update manifest); `load_latest()` reads manifest, verifies checksum of most recent valid entry, falls back to previous on mismatch; `build_checkpoint_dict(trainer, step)` assembles all required keys from `contracts/checkpoint.md`; pass T014
 - [X] T023 [US1] Implement `src/pcg_llm/checkpointing/signals.py`: `SignalHandler` — registers `signal.SIGTERM` handler and `KeyboardInterrupt` catcher; on signal, calls `CheckpointManager.save()` then exits with code 2; logs "SIGTERM received, saving checkpoint..." before save
-- [X] T024 [US1] Implement `src/pcg_llm/training/trainer.py`: `PCGTrainer` — main training loop; initializes `PCGNode`, `ConstrainedDEQSolver`, `BlockSparseAdjacency`, `FreeEnergyLoss`, `RigLSparsitySchedule`, `DataCurriculum`, `CheckpointManager`, `SignalHandler` from `TrainingConfig`; inner loop: tokenize batch → DEQ solve → compute loss → backward → optimizer step → RigL every 100 steps → checkpoint every N steps; emits `TrainingMetrics` each step; `resume_if_available()` on startup; pass integration tests
+- [X] T024 [US1] Implement `src/pcg_llm/training/trainer.py`: `PCGTrainer` — main training loop; initializes `PCGNode`, `ConstrainedDEQSolver`, `BlockSparseAdjacency`, `FreeEnergyLoss`, `RigLSparsitySchedule`, `DataCurriculum`, `CheckpointManager`, `SignalHandler` from `TrainingConfig`; inner loop: tokenize batch → DEQ solve → compute loss → backward → optimizer step → RigL every 100 steps → checkpoint every N steps; emits `TrainingMetrics` each step; `resume_if_available()` on startup; pass integration tests *(Amended 2026-04-04: extended to implement DDP multi-GPU support — auto-detection of `LOCAL_RANK`, `DistributedDataParallel` wrapping of `PCGNode` and `output_proj`, `W_structure.requires_grad_(True)` fix, `W_structure.grad` manual `all_reduce` in `_optimizer_step`, RigL mask broadcast after `drop_and_grow`, rank-0-only checkpointing/logging/W&B; raw refs `_raw_node`/`_raw_output_proj` kept for checkpoint save/load)*
 - [X] T025 [US1] Implement `src/pcg_llm/__main__.py` and `main.py`: CLI entry point with `train`, `evaluate`, `export-config` subcommands per `contracts/cli.md`; `--preset tiny/3b` flag loading named configs; all flags from cli contract; `--resume` default True; proper exit codes (0, 1, 2)
 - [X] T026 [US1] Write and pass integration test `tests/integration/test_training_loop.py` (`@pytest.mark.slow`): run Tiny PCG for 100 steps on synthetic data; assert loss decreases, sparsity in range, checkpoint written at step 50 and 100, solver steps ≤ 15 (matching SC-003: mean solver steps ≤ 15 out of max 25)
 - [X] T027 [US1] Write and pass integration test `tests/integration/test_resume.py` (`@pytest.mark.slow`): run for 150 steps, interrupt at step 100 by raising `KeyboardInterrupt`, resume, assert training continues from step 100 with matching loss value; assert no `.pt.tmp` orphan files remain
@@ -78,6 +78,8 @@
 - [X] T056 [P] [US1] Write and pass unit tests for FR-019 gradient accumulation in `tests/unit/test_trainer_unit.py`: when `grad_accum_steps=4`, optimizer step is called once every 4 batches; loss value matches single-step with 4× batch size (up to BF16 tolerance); step counter increments every batch (not every optimizer step)
 
 - [X] T060 [P] [US1] Capture DEQ solver baseline timing with all optimization flags OFF (v3.0 behavior): run `benchmarks/bench_deq_solver.py --flags-off` and write results to `benchmarks/results/deq_solver_baseline.json`; this MUST run before Phase 4 optimization tasks to establish the comparison baseline required by constitution Principle V and SC-007
+- [X] T061 [P] [US1] Write DDP unit tests in `tests/unit/test_trainer_unit.py` (class `TestDDPSupport`): `_is_ddp=False` by default when `LOCAL_RANK` not set; `W_structure.requires_grad=True` after `__init__`; `W_structure.grad is not None` after `train_step` backward (regression for missing `requires_grad_(True)` bug); `_save_checkpoint` skipped when `_rank != 0`; `dist.all_reduce` called in `_optimizer_step` when DDP active; `dist.broadcast` called in `_broadcast_state_after_resume`; RigL mask broadcast triggered in `train_step` when DDP active; DDP+grad_accum optimizer step count verified (class `TestDDPGradAccumInteraction`)
+- [X] T062 [P] [US1] Create `benchmarks/bench_ddp_vs_single.py`: measure tokens/s and peak VRAM for single-GPU vs DDP 2× on Tiny PCG dimensions; structured comparison table printed to stdout; writes `benchmarks/results/ddp_vs_single_baseline.json` with `--baseline` flag; skips DDP measurement gracefully when `torchrun` or 2nd GPU is unavailable; satisfies constitution Principle V for DDP throughput claims
 
 **Checkpoint**: Tiny PCG trains end-to-end on CPU/single GPU, checkpoints atomically, and resumes correctly. US1 independently testable.
 
@@ -172,7 +174,7 @@
 ```
 Phase 1 (T001–T004)
   └─► Phase 2 (T005–T010)
-        └─► Phase 3 (T011–T027, T054–T056, T060) ─── MVP ──► can deploy US1 independently
+        └─► Phase 3 (T011–T027, T054–T056, T060–T062) ─── MVP ──► can deploy US1 independently
         └─► Phase 4 (T028–T038) ─── depends on Phase 3 complete (trainer.py exists)
         │     └─► T060 MUST precede Phase 4 (baseline benchmark capture — Constitution V)
         └─► Phase 5 (T039–T043, T057–T059) ─── depends on Phase 3 complete (CheckpointManager exists)
@@ -193,6 +195,8 @@ T054 (PCGNode unit tests) — depends on T015 (PCGNode must exist)
 T055 (CPU offload tests) — depends on T017 (Adjacency must exist)
 T056 (grad accum tests) — depends on T024 (Trainer must exist)
 T060 (baseline benchmark) — depends on T025 (CLI must exist); MUST precede T028
+T061 (DDP tests) — depends on T024 (Trainer with DDP must exist)
+T062 (DDP benchmark) — depends on T024 (Trainer with DDP must exist)
 ```
 
 Within Phase 4:

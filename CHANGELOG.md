@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/pcg_llm/training/normalization.py` — `nGPTNorm`: hyperspherical unit-norm; `LayerNorm` fallback; `build_norm()` factory
 - `src/pcg_llm/training/scheduler.py` — `RigLSparsitySchedule`: cosine decay 0.30→0 over `freeze_step_frac × total_steps` steps
 - `src/pcg_llm/training/curriculum.py` — `DataCurriculum`: per-epoch FineWeb-Edu/Stack v2 mixing (92%→85%→70% / 8%→15%→30%)
-- `src/pcg_llm/training/trainer.py` — `PCGTrainer`: full training loop; `resume_if_available()`; `train()`; `generate()`; `fine_tune_eagle()`; W&B integration; SIGTERM-aware checkpointing
+- `src/pcg_llm/training/trainer.py` — `PCGTrainer`: full training loop; `resume_if_available()`; `train()`; `generate()`; `fine_tune_eagle()`; W&B integration; SIGTERM-aware checkpointing; **DDP multi-GPU support** (auto-detected via `LOCAL_RANK`, `DistributedDataParallel` wrapping, `W_structure.grad` all_reduce, RigL mask broadcast, rank-0-only I/O)
 - `src/pcg_llm/checkpointing/local.py` — `LocalCheckpointBackend`: atomic `.pt.tmp`→`.pt` write; disk quota monitoring (warn <1 GB, critical <500 MB)
 - `src/pcg_llm/checkpointing/gcs.py` — `GCSCheckpointBackend`: atomic GCS writes via temp blob + `rewrite()` rename; exponential backoff retry (max 5, base 1s, max 32s)
 - `src/pcg_llm/checkpointing/checkpoint.py` — `CheckpointManager`: SHA-256 verification; atomic manifest updates; fall-back-to-previous on corruption
@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Test Suite
 - `tests/conftest.py` — shared fixtures: `tiny_config`, `temp_checkpoint_dir`, `mock_dataset_batch`
 - `tests/unit/` — 9 unit test modules covering config, tokenizer, streaming, DEQ solver, adjacency, loss, checkpoint, Muon optimizer, Monarch projection, metrics
+- `tests/unit/test_trainer_unit.py` — `TestDDPSupport`: DDP unit tests (T061); `TestDDPGradAccumInteraction`: DDP + grad accumulation (M3); `TestWStructureGradient`: regression tests for W_structure.grad (C2)
 - `tests/integration/` — 5 integration test modules: training loop, resume, EAGLE head, GCS resume, 3B smoke
 - `tests/gpu/` — 2 GPU test modules: block-sparse matmul, FlexAttention mask
 
@@ -54,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `bench_deq_solver.py` — wall-clock + peak VRAM for DEQ solver calls
 - `bench_rigl_cycle.py` — Drop-and-Grow step timing at 90% sparsity
 - `bench_eagle_throughput.py` — EAGLE draft tree throughput
+- `bench_ddp_vs_single.py` — DDP 2-GPU vs single-GPU throughput comparison (T062)
 - `benchmarks/README.md` — run instructions and constitutional Principle V requirements
 
 #### Dependency Upgrades (`pyproject.toml`)

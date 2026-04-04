@@ -49,6 +49,8 @@ Build the full PCG-LLM training system on top of the v3.0 architecture specifica
 
 **Terminology note**: The DEQ solver iteration cap is `max_solver_iters` throughout `TrainingConfig`, `tasks.md`, and the codebase. The torchdeq API calls this parameter `max_iter`. These are the same concept; use `max_solver_iters` in all project files.
 
+**Multi-GPU (DDP)**: Auto-detected via `LOCAL_RANK` environment variable set by `torchrun`. When active, `PCGNode` and `output_proj` are wrapped in `DistributedDataParallel` with `broadcast_buffers=True` (required for spectral-norm `weight_u`/`weight_v` buffer synchronization). `W_structure` is NOT a module parameter and is therefore NOT covered by DDP's automatic gradient all-reduce; `_optimizer_step()` manually calls `dist.all_reduce(W_structure.grad)` before each optimizer step. RigL topology decisions are made on rank-0 only and the updated mask is broadcast to all ranks via `dist.broadcast`. All checkpointing, W&B logging, and console output is restricted to rank-0. Launch command: `torchrun --nproc_per_node=2 --master_port=29500 train_ddp.py`.
+
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*

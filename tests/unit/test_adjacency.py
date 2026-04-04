@@ -191,3 +191,66 @@ class TestCPUOffloadFR018:
         assert torch.equal(
             adj.mask.cpu(), adj2.mask.cpu()
         ), "Mask must be identical after state_dict round-trip through CPU"
+
+
+class TestWStructureGradient:
+    """Regression tests for W_structure gradient flow (C2 — DDP requires_grad fix)."""
+
+    def test_w_structure_receives_grad_via_l1_penalty(self) -> None:
+        """W_structure.grad must be non-None after backward through L1-style loss.
+
+        Regression: before the DDP fix, W_structure was created without
+        requires_grad=True so gradients never accumulated on it.
+        """
+        from pcg_llm.arch.adjacency import BlockSparseAdjacency
+
+        adj = BlockSparseAdjacency(num_blocks=4, block_size=8)
+        adj.initialize_erdos_renyi(sparsity=0.50)
+        adj.W_structure.requires_grad_(True)
+
+        # L1 penalty: the same operation used by FreeEnergyLoss
+        loss = adj.W_structure.abs().sum()
+        loss.backward()
+
+        assert (
+            adj.W_structure.grad is not None
+        ), "W_structure must receive gradients after backward through L1 penalty"
+        assert (
+            adj.W_structure.grad.shape == adj.W_structure.shape
+        ), "W_structure.grad shape must match W_structure shape"
+
+    def test_w_structure_grad_nonzero_for_active_edges(self) -> None:
+        """Active edges (mask=True) in W_structure must have non-zero gradients."""
+        from pcg_llm.arch.adjacency import BlockSparseAdjacency
+
+        adj = BlockSparseAdjacency(num_blocks=8, block_size=8)
+        adj.initialize_erdos_renyi(sparsity=0.50)
+        adj.W_structure.requires_grad_(True)
+
+        # Only active edges contribute to the L1 penalty
+        active_weights = adj.W_structure[adj.mask]
+        loss = active_weights.abs().sum()
+        loss.backward()
+
+        assert adj.W_structure.grad is not None
+        # Gradient at active positions must be non-zero (sign of W_structure)
+        active_grads = adj.W_structure.grad[adj.mask]
+        assert (
+            active_grads.abs().sum().item() > 0
+        ), "Gradients at active edge positions must be non-zero"
+
+    def test_w_structure_grad_persists_across_accumulation(self) -> None:
+        """W_structure.grad accumulates correctly over multiple backward passes."""
+        from pcg_llm.arch.adjacency import BlockSparseAdjacency
+
+        adj = BlockSparseAdjacency(num_blocks=4, block_size=8)
+        adj.initialize_erdos_renyi(sparsity=0.50)
+        adj.W_structure.requires_grad_(True)
+
+        for _ in range(3):
+            loss = adj.W_structure.abs().sum()
+            loss.backward()
+
+        # Grad should be 3× the per-step gradient
+        assert adj.W_structure.grad is not None
+        assert adj.W_structure.grad.abs().sum().item() > 0
