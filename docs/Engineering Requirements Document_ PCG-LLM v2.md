@@ -2,7 +2,7 @@ User:
 Could you again assemble a team of experts to see if there are opportunities for further optimisation or some engineering or mathematical or algorithmic trick could be employed to achieve the same but more performant or faster than the original algorithm.
 
 ---
-To squeeze the absolute maximum performance out of this architecture, we need to move beyond standard neural network optimizations and borrow from the bleeding edge of **Implicit Deep Learning** and **Dynamic Sparse Training**. 
+To squeeze the absolute maximum performance out of this architecture, we need to move beyond standard neural network optimizations and borrow from the bleeding edge of **Implicit Deep Learning** and **Dynamic Sparse Training**.
 
 I have reconvened the Implementation Task Force. Their objective: identify algorithmic shortcuts, mathematical equivalents, and engineering "hacks" to bypass the slowest parts of the PCG-LLM v1.1 spec.
 
@@ -13,11 +13,11 @@ Here is the transcript of their review and the resulting **Hyper-Optimized v2.0 
 ### Part 1: The Expert Review (The "Hacker" Optimization Phase)
 
 **Dr. V (Lead Research Scientist - Algorithmic Math):**
-> "The v1.1 spec uses 3-5 micro-iterations of local gradient descent to find the energy-minimized state during training. This is mathematically naive. We are looking for a fixed point where the graph settles. Instead of iterating step-by-step, we should use **Deep Equilibrium (DEQ) Models** mathematics. By treating the entire PCG as a root-finding problem ($f(x) = x$), we can use **Broyden’s Method** (a quasi-Newton numerical solver) to analytically 'jump' directly to the steady state. 
+> "The v1.1 spec uses 3-5 micro-iterations of local gradient descent to find the energy-minimized state during training. This is mathematically naive. We are looking for a fixed point where the graph settles. Instead of iterating step-by-step, we should use **Deep Equilibrium (DEQ) Models** mathematics. By treating the entire PCG as a root-finding problem ($f(x) = x$), we can use **Broyden’s Method** (a quasi-Newton numerical solver) to analytically 'jump' directly to the steady state.
 > *The Trick:* This mathematically bypasses the iterative loops entirely, achieving the exact same 'settled' graph state in a fraction of the compute time, with $O(1)$ memory consumption."
 
 **Sarah (Systems Engineer - Hardware Sparsity):**
-> "In v1.1, we start with a dense K-Nearest Neighbor mask and penalize it ($L_1$) to make it sparse. That means we are wasting GPU cycles computing gradients for edges we are just going to delete. We should use **Dynamic Sparse Training (DST)**, specifically the **RigL (Rigging the Lottery)** algorithm. 
+> "In v1.1, we start with a dense K-Nearest Neighbor mask and penalize it ($L_1$) to make it sparse. That means we are wasting GPU cycles computing gradients for edges we are just going to delete. We should use **Dynamic Sparse Training (DST)**, specifically the **RigL (Rigging the Lottery)** algorithm.
 > *The Trick:* We initialize the graph at 95% sparsity from Step 1. We never instantiate a dense matrix. Every 100 steps, we drop the lowest-weight edges and calculate the analytical gradient to find where the 'Error' is highest. We instantly 'spawn' new edges exactly where they are needed. We get the performance of a dense network while only ever doing sparse matrix math."
 
 **Marcus (NLP & Generative Architect - Latency Optimization):**
@@ -50,7 +50,7 @@ We abandon the "start dense, prune later" approach to avoid initial compute wast
 ## 3. Inference Architecture: Speculative Verification
 The generative pipeline is upgraded for deterministic, ultra-low latency.
 * **Component A (The Drafter):** A 50M parameter linear Transformer (or State Space Model like Mamba) generates a fast, autoregressive draft of the answer (e.g., $128$ tokens).
-* **Component B (The Verifier):** The 3B PCG-LLM ingests the prompt and the 128-token draft simultaneously. 
+* **Component B (The Verifier):** The 3B PCG-LLM ingests the prompt and the 128-token draft simultaneously.
 * **Execution:** * The PCG acts as a highly structured "Error Detector." It maps the draft against its internal graph logic in a single pass.
     * If the draft is logically sound (low Free Energy), the 128 tokens are instantly output to the user.
     * If a logical contradiction exists at token $N=45$, the PCG overwrites token 45, prunes the rest of the draft, and triggers the Drafter to generate a new sequence from token 46 onwards.

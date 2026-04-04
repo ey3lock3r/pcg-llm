@@ -2,6 +2,7 @@
 
 @pytest.mark.slow
 """
+
 from __future__ import annotations
 
 import pytest
@@ -125,9 +126,10 @@ class TestTrainingResume:
             resumed_losses.append(m["loss_total"])
 
         # SC-002: mean loss difference must be < 0.5%
-        assert all(l == l and l != float("inf") for l in resumed_losses), \
-            "Loss must be finite after resume"
-        for step_i, (ref, res) in enumerate(zip(ref_losses, resumed_losses)):
+        assert all(
+            l == l and l != float("inf") for l in resumed_losses
+        ), "Loss must be finite after resume"
+        for step_i, (ref, res) in enumerate(zip(ref_losses, resumed_losses, strict=False)):
             if ref > 0:
                 rel_diff = abs(ref - res) / ref
                 assert rel_diff < 0.005, (

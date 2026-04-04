@@ -26,6 +26,7 @@ References:
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import torch
 import torch.nn as nn
@@ -37,7 +38,7 @@ def _nearest_pow2(n: int) -> int:
     """Return the largest power of 2 that is <= *n*."""
     if n <= 1:
         return 1
-    return 2 ** int(math.log2(n))
+    return cast(int, 2 ** int(math.log2(n)))
 
 
 def _choose_block_size(d_in: int, d_out: int) -> int:
@@ -80,7 +81,7 @@ class MonarchProjection(nn.Module):
         self.with_spectral_norm = with_spectral_norm
 
         b = self.block_size
-        n_in = d_in // b   # number of input blocks
+        n_in = d_in // b  # number of input blocks
         n_out = d_out // b  # number of output blocks
 
         # Factor 1: n_in independent (b × b) matrices operating on the input
@@ -99,20 +100,18 @@ class MonarchProjection(nn.Module):
             # We reshape to 2-D, apply spectral_norm via a helper Linear, then
             # store the result as a plain parameter (spectral norm is re-applied
             # each forward pass via the SN wrapper linears).
-            self._f1_linears = nn.ModuleList([
-                nn.utils.spectral_norm(nn.Linear(b, b, bias=False))
-                for _ in range(n_in)
-            ])
-            self._f2_linears = nn.ModuleList([
-                nn.utils.spectral_norm(nn.Linear(b, b, bias=False))
-                for _ in range(n_out)
-            ])
+            self._f1_linears = nn.ModuleList(
+                [nn.utils.spectral_norm(nn.Linear(b, b, bias=False)) for _ in range(n_in)]
+            )
+            self._f2_linears = nn.ModuleList(
+                [nn.utils.spectral_norm(nn.Linear(b, b, bias=False)) for _ in range(n_out)]
+            )
             # Initialise their weights from our orthogonal init
             with torch.no_grad():
                 for i, lin in enumerate(self._f1_linears):
-                    lin.weight.copy_(f1_weight[i])
+                    cast(nn.Linear, lin).weight.data.copy_(f1_weight[i])
                 for i, lin in enumerate(self._f2_linears):
-                    lin.weight.copy_(f2_weight[i])
+                    cast(nn.Linear, lin).weight.data.copy_(f2_weight[i])
             self.factor1: nn.Parameter | None = None
             self.factor2: nn.Parameter | None = None
         else:
@@ -156,7 +155,7 @@ class MonarchProjection(nn.Module):
             # Batched matmul: factor1 has shape (n_in, b, b)
             # h: (..., n_in, b) → (..., n_in, b) via h @ factor1.T per block
             # Expand batch dims for broadcasting
-            h = torch.einsum("...ib,ibc->...ic", h, self.factor1)  # type: ignore[arg-type]
+            h = torch.einsum("...ib,ibc->...ic", h, self.factor1)
 
         # Reshape intermediate: (..., n_in, b) → (..., n_out, b)
         # This is the "butterfly" permutation — flatten then re-block
@@ -177,8 +176,7 @@ class MonarchProjection(nn.Module):
                 out_blocks.append(lin(block))
             h = torch.stack(out_blocks, dim=-2)
         else:
-            h = torch.einsum("...ib,ibc->...ic", h, self.factor2)  # type: ignore[arg-type]
+            h = torch.einsum("...ib,ibc->...ic", h, self.factor2)
 
         # Reshape: (..., n_out, b) → (..., d_out)
-        out = h.reshape(*batch_shape, self.d_out)
-        return out
+        return h.reshape(*batch_shape, self.d_out)

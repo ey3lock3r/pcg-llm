@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 import torch
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -332,6 +331,7 @@ class TestFineTuneEagle:
         """If EAGLEExtrapolationHead cannot be imported, method returns silently."""
         import sys
         from unittest.mock import patch
+
         from pcg_llm.training.trainer import PCGTrainer
 
         config = _make_config(tmp_path)
@@ -361,9 +361,9 @@ class TestGradientAccumulation:
                 yield torch.randint(0, 256, (2, 64))
 
         trainer.train(loader(), resume=False)
-        assert trainer.step == 8, (
-            f"step should be 8 (one per batch regardless of accum_steps), got {trainer.step}"
-        )
+        assert (
+            trainer.step == 8
+        ), f"step should be 8 (one per batch regardless of accum_steps), got {trainer.step}"
 
     def test_optimizer_step_called_once_per_accum_window(self, tmp_path: Path):
         """With grad_accum_steps=4 and 8 batches, optimizer.step is called exactly 2×."""
@@ -444,4 +444,4 @@ class TestGradientCheckpointing:
         batch = torch.randint(0, 256, (2, 64))
         metrics = trainer.train_step(batch)
         assert "loss_total" in metrics
-        assert not (metrics["loss_total"] != metrics["loss_total"]), "Loss must not be NaN"
+        assert metrics["loss_total"] == metrics["loss_total"], "Loss must not be NaN"

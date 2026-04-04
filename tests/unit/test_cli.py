@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # _parse_tokens
 # ---------------------------------------------------------------------------
@@ -20,6 +19,7 @@ class TestParseTokens:
 
     def _fn(self):
         from pcg_llm._cli import _parse_tokens
+
         return _parse_tokens
 
     def test_10b(self):
@@ -42,11 +42,13 @@ class TestParseTokens:
 
     def test_invalid_string_raises(self):
         from pcg_llm._cli import _parse_tokens
+
         with pytest.raises(argparse.ArgumentTypeError):
             _parse_tokens("notanumber")
 
     def test_invalid_suffix_with_text_raises(self):
         from pcg_llm._cli import _parse_tokens
+
         with pytest.raises(argparse.ArgumentTypeError):
             _parse_tokens("abcB")
 
@@ -61,11 +63,13 @@ class TestBuildParser:
 
     def test_returns_argument_parser(self):
         from pcg_llm._cli import _build_parser
+
         parser = _build_parser()
         assert isinstance(parser, argparse.ArgumentParser)
 
     def test_export_config_subcommand_exists(self):
         from pcg_llm._cli import _build_parser
+
         parser = _build_parser()
         # Should not raise — export-config is a valid subcommand
         args = parser.parse_args(["export-config", "--output", "dummy.json"])
@@ -73,12 +77,14 @@ class TestBuildParser:
 
     def test_train_subcommand_exists(self):
         from pcg_llm._cli import _build_parser
+
         parser = _build_parser()
         args = parser.parse_args(["train"])
         assert args.command == "train"
 
     def test_evaluate_subcommand_exists(self):
         from pcg_llm._cli import _build_parser
+
         parser = _build_parser()
         args = parser.parse_args(["evaluate", "--checkpoint", "ckpt.pt"])
         assert args.command == "evaluate"
@@ -94,6 +100,7 @@ class TestMainExportConfig:
 
     def test_creates_valid_json_file(self, tmp_path: Path):
         from pcg_llm._cli import main
+
         output = tmp_path / "out.json"
         rc = main(["export-config", "--output", str(output)])
         assert rc == 0
@@ -104,6 +111,7 @@ class TestMainExportConfig:
 
     def test_tiny_preset_output(self, tmp_path: Path):
         from pcg_llm._cli import main
+
         output = tmp_path / "tiny.json"
         rc = main(["export-config", "--preset", "tiny", "--output", str(output)])
         assert rc == 0
@@ -114,6 +122,7 @@ class TestMainExportConfig:
 
     def test_returns_1_on_oserror(self, tmp_path: Path):
         from pcg_llm._cli import main
+
         # Point to a directory that doesn't exist and can't be created (invalid path)
         bad_output = str(tmp_path / "no_such_dir" / "subdir" / "out.json")
         # Patch Path.write_text to raise OSError
@@ -163,6 +172,7 @@ class TestResolveConfig:
     def test_no_overrides_returns_default_config(self):
         from pcg_llm._cli import _resolve_config
         from pcg_llm.config import TrainingConfig
+
         args = self._make_empty_args()
         cfg = _resolve_config(args)
         assert isinstance(cfg, TrainingConfig)
@@ -173,6 +183,7 @@ class TestResolveConfig:
 
     def test_preset_tiny_sets_values(self):
         from pcg_llm._cli import _resolve_config
+
         args = self._make_empty_args(preset="tiny")
         cfg = _resolve_config(args)
         assert cfg.hidden_dim == 512
@@ -181,6 +192,7 @@ class TestResolveConfig:
 
     def test_json_config_file(self, tmp_path: Path):
         from pcg_llm._cli import _resolve_config
+
         # Write a partial config JSON
         cfg_file = tmp_path / "custom.json"
         cfg_file.write_text(
@@ -194,6 +206,7 @@ class TestResolveConfig:
 
     def test_cli_override_wins_over_preset(self):
         from pcg_llm._cli import _resolve_config
+
         # preset=tiny sets warmup_steps=500; override to 10
         args = self._make_empty_args(preset="tiny", warmup_steps=10)
         cfg = _resolve_config(args)
@@ -210,6 +223,7 @@ class TestCmdEvaluate:
 
     def test_returns_1_when_checkpoint_missing(self, tmp_path: Path):
         from pcg_llm._cli import _cmd_evaluate
+
         args = argparse.Namespace(
             checkpoint=str(tmp_path / "nonexistent.pt"),
             tasks="arc_challenge,mmlu",

@@ -17,19 +17,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 try:
-    import lm_eval  # type: ignore[import-untyped]
+    import lm_eval
 
     _LM_EVAL_AVAILABLE = True
 except ImportError:
-    lm_eval = None  # type: ignore[assignment]
+    lm_eval = None
     _LM_EVAL_AVAILABLE = False
 
 try:
-    import bitsandbytes  # type: ignore[import-untyped]
+    import bitsandbytes
 
     _BNB_AVAILABLE = True
 except ImportError:
-    bitsandbytes = None  # type: ignore[assignment]
+    bitsandbytes = None
     _BNB_AVAILABLE = False
 
 
@@ -82,7 +82,7 @@ class BenchmarkHarness:
             )
 
         try:
-            from lm_eval import evaluator as lm_evaluator  # type: ignore[import-untyped]
+            from lm_eval import evaluator as lm_evaluator
         except ImportError as exc:
             raise ImportError(
                 "Could not import lm_eval.evaluator. "

@@ -6,8 +6,11 @@ per research.md Decision 3: placement inside DEQ preserves fixed-point semantics
 
 from __future__ import annotations
 
+from typing import cast
+
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 
 class nGPTNorm(nn.Module):
@@ -40,7 +43,7 @@ class nGPTNorm(nn.Module):
         Returns:
             Tensor of same shape with unit L2 norm along self.dim.
         """
-        return x / (x.norm(dim=self.dim, keepdim=True) + self.eps)
+        return cast(Tensor, x / (x.norm(dim=self.dim, keepdim=True) + self.eps))
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, eps={self.eps}"
@@ -57,7 +60,7 @@ class LayerNorm(nn.Module):
         self._norm = nn.LayerNorm(normalized_shape, eps=eps)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self._norm(x)
+        return cast(Tensor, self._norm(x))
 
 
 def build_norm(normalize: str, hidden_dim: int) -> nn.Module:
@@ -75,9 +78,6 @@ def build_norm(normalize: str, hidden_dim: int) -> nn.Module:
     """
     if normalize == "ngpt":
         return nGPTNorm(dim=-1)
-    elif normalize == "standard":
+    if normalize == "standard":
         return LayerNorm(normalized_shape=hidden_dim)
-    else:
-        raise ValueError(
-            f"Unknown normalize value '{normalize}'. Choose 'ngpt' or 'standard'."
-        )
+    raise ValueError(f"Unknown normalize value '{normalize}'. Choose 'ngpt' or 'standard'.")

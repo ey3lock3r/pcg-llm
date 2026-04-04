@@ -85,7 +85,7 @@ class TrainingConfig:
                 "dataset_fineweb_frac and dataset_stack_frac must have the same length"
             )
         for i, (fw, sv) in enumerate(
-            zip(self.dataset_fineweb_frac, self.dataset_stack_frac)
+            zip(self.dataset_fineweb_frac, self.dataset_stack_frac, strict=False)
         ):
             if abs(fw + sv - 1.0) > 1e-9:
                 raise ValueError(
@@ -101,21 +101,15 @@ class TrainingConfig:
 
         # Optimizer bits
         if self.optimizer_bits not in {32, 8}:
-            raise ValueError(
-                f"optimizer_bits must be 32 or 8, got {self.optimizer_bits}"
-            )
+            raise ValueError(f"optimizer_bits must be 32 or 8, got {self.optimizer_bits}")
 
         # Normalize value
         if self.normalize not in {"standard", "ngpt"}:
-            raise ValueError(
-                f"normalize must be 'standard' or 'ngpt', got '{self.normalize}'"
-            )
+            raise ValueError(f"normalize must be 'standard' or 'ngpt', got '{self.normalize}'")
 
         # Projection value
         if self.projection not in {"dense", "monarch"}:
-            raise ValueError(
-                f"projection must be 'dense' or 'monarch', got '{self.projection}'"
-            )
+            raise ValueError(f"projection must be 'dense' or 'monarch', got '{self.projection}'")
 
         # Monarch min dim guard
         if self.projection == "monarch" and self.hidden_dim < 64:
@@ -133,33 +127,23 @@ class TrainingConfig:
 
         # Sparsity in (0, 1)
         if not (0.0 < self.initial_sparsity < 1.0):
-            raise ValueError(
-                f"initial_sparsity must be in (0.0, 1.0), got {self.initial_sparsity}"
-            )
+            raise ValueError(f"initial_sparsity must be in (0.0, 1.0), got {self.initial_sparsity}")
 
         # Anderson window bounds [1, 10]
         if not (1 <= self.anderson_window <= 10):
-            raise ValueError(
-                f"anderson_window must be in [1, 10], got {self.anderson_window}"
-            )
+            raise ValueError(f"anderson_window must be in [1, 10], got {self.anderson_window}")
 
         # Eagle draft len [1, 16]
         if not (1 <= self.eagle_draft_len <= 16):
-            raise ValueError(
-                f"eagle_draft_len must be in [1, 16], got {self.eagle_draft_len}"
-            )
+            raise ValueError(f"eagle_draft_len must be in [1, 16], got {self.eagle_draft_len}")
 
         # Eagle K [1, 32]
         if not (1 <= self.eagle_k <= 32):
-            raise ValueError(
-                f"eagle_k must be in [1, 32], got {self.eagle_k}"
-            )
+            raise ValueError(f"eagle_k must be in [1, 32], got {self.eagle_k}")
 
         # Solver tolerance must be positive
         if self.solver_tolerance <= 0:
-            raise ValueError(
-                f"solver_tolerance must be > 0, got {self.solver_tolerance}"
-            )
+            raise ValueError(f"solver_tolerance must be > 0, got {self.solver_tolerance}")
 
         # LR must be positive
         if self.base_lr <= 0:
@@ -167,9 +151,7 @@ class TrainingConfig:
 
         # Grad accum must be >= 1
         if self.grad_accum_steps < 1:
-            raise ValueError(
-                f"grad_accum_steps must be >= 1, got {self.grad_accum_steps}"
-            )
+            raise ValueError(f"grad_accum_steps must be >= 1, got {self.grad_accum_steps}")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize config to a plain dict (JSON-compatible)."""
@@ -181,7 +163,7 @@ class TrainingConfig:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "TrainingConfig":
+    def from_dict(cls, d: dict[str, Any]) -> TrainingConfig:
         """Reconstruct a TrainingConfig from a plain dict."""
         # Convert list fields back to tuples for frozen dataclass
         list_fields = {"dataset_fineweb_frac", "dataset_stack_frac"}
@@ -194,7 +176,7 @@ class TrainingConfig:
         return cls(**kwargs)
 
     @classmethod
-    def from_preset(cls, preset: str) -> "TrainingConfig":
+    def from_preset(cls, preset: str) -> TrainingConfig:
         """Load a named preset configuration.
 
         Available presets: 'tiny', '3b'.
@@ -224,7 +206,7 @@ class TrainingConfig:
                 cpu_offload_mask=False,
                 wandb_project="pcg-llm-tiny",
             )
-        elif preset == "3b":
+        if preset == "3b":
             return cls(
                 hidden_dim=3072,
                 max_seq_len=4096,
@@ -249,7 +231,4 @@ class TrainingConfig:
                 cpu_offload_mask=True,
                 wandb_project="pcg-llm-3b",
             )
-        else:
-            raise ValueError(
-                f"Unknown preset '{preset}'. Available presets: 'tiny', '3b'"
-            )
+        raise ValueError(f"Unknown preset '{preset}'. Available presets: 'tiny', '3b'")

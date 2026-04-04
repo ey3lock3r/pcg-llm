@@ -20,11 +20,9 @@ References:
 from __future__ import annotations
 
 import logging
-import math
+from typing import cast
 
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import Tensor
 
 logger = logging.getLogger(__name__)
@@ -129,7 +127,7 @@ class EAGLEExtrapolationHead(nn.Module):
         # (B, K, draft_len)  via a linear projection + argmax
         draft_logits = self._draft_proj(branches)  # (B, K, draft_len)
         draft_tree = draft_logits.long()  # raw logit values as indices (TDD)
-        return draft_tree
+        return cast(Tensor, draft_tree)
 
     def update_accept_rate_ema(self, accept_rate: float) -> None:
         """Update the exponential moving average of the draft acceptance rate.

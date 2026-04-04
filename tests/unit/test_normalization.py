@@ -20,9 +20,9 @@ class TestNGPTNorm:
         x = torch.randn(4, 8, 64)
         y = norm(x)
         norms = y.norm(dim=-1)
-        assert torch.allclose(norms, torch.ones_like(norms), atol=1e-5), (
-            f"Expected unit norms, got min={norms.min().item():.6f} max={norms.max().item():.6f}"
-        )
+        assert torch.allclose(
+            norms, torch.ones_like(norms), atol=1e-5
+        ), f"Expected unit norms, got min={norms.min().item():.6f} max={norms.max().item():.6f}"
 
     def test_output_shape_unchanged(self) -> None:
         """Output shape must match input shape."""

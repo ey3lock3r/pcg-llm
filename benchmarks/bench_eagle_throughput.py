@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
 """Benchmark: EAGLE draft + verification throughput (T037)."""
+
 from __future__ import annotations
 
 import argparse
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import torch
 
 
-def run_benchmark(hidden_dim: int = 512, num_blocks: int = 16,
-                  eagle_k: int = 8, draft_len: int = 4, n_calls: int = 50) -> dict:
+def run_benchmark(
+    hidden_dim: int = 512,
+    num_blocks: int = 16,
+    eagle_k: int = 8,
+    draft_len: int = 4,
+    n_calls: int = 50,
+) -> dict:
     try:
         from pcg_llm.arch.eagle_head import EAGLEExtrapolationHead
     except ImportError:
-        return {"benchmark": "bench_eagle_throughput", "error": "EAGLEExtrapolationHead not available"}
+        return {
+            "benchmark": "bench_eagle_throughput",
+            "error": "EAGLEExtrapolationHead not available",
+        }
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     head = EAGLEExtrapolationHead(hidden_dim=hidden_dim, eagle_k=eagle_k, draft_len=draft_len)
@@ -39,9 +48,14 @@ def run_benchmark(hidden_dim: int = 512, num_blocks: int = 16,
 
     return {
         "benchmark": "bench_eagle_throughput",
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "config": {"hidden_dim": hidden_dim, "eagle_k": eagle_k, "draft_len": draft_len,
-                   "n_calls": n_calls, "device": str(device)},
+        "timestamp_utc": datetime.now(UTC).isoformat(),
+        "config": {
+            "hidden_dim": hidden_dim,
+            "eagle_k": eagle_k,
+            "draft_len": draft_len,
+            "n_calls": n_calls,
+            "device": str(device),
+        },
         "results": {
             "wall_clock_ms_total": round(elapsed_ms, 2),
             "wall_clock_ms_per_call": round(elapsed_ms / n_calls, 3),

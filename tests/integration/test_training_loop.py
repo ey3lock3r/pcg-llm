@@ -2,6 +2,7 @@
 
 @pytest.mark.slow — skipped in standard CI; run with -m slow.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -71,9 +72,7 @@ class TestTrainingLoop:
             metrics = tiny_trainer.train_step(batch)
             tiny_trainer.step += 1
             sp = metrics["sparsity"]
-            assert 0.80 <= sp <= 0.98, (
-                f"Sparsity {sp:.4f} out of SC-004 hard bounds [0.80, 0.98]"
-            )
+            assert 0.80 <= sp <= 0.98, f"Sparsity {sp:.4f} out of SC-004 hard bounds [0.80, 0.98]"
             if i >= 99:
                 break
 
@@ -103,9 +102,9 @@ class TestTrainingLoop:
         for i, batch in enumerate(self._make_synthetic_loader(n_steps=20)):
             metrics = tiny_trainer.train_step(batch)
             tiny_trainer.step += 1
-            assert metrics["solver_steps"] <= tiny_trainer.config.max_solver_iters, (
-                f"Solver steps {metrics['solver_steps']} exceeded max {tiny_trainer.config.max_solver_iters}"
-            )
+            assert (
+                metrics["solver_steps"] <= tiny_trainer.config.max_solver_iters
+            ), f"Solver steps {metrics['solver_steps']} exceeded max {tiny_trainer.config.max_solver_iters}"
             if i >= 19:
                 break
 

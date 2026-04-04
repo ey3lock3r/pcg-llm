@@ -23,21 +23,23 @@ class TestPCGNode:
 
         updated, error = node(z, neighbors)
 
-        assert updated.shape == (B, N, hidden_dim), (
-            f"updated shape {updated.shape} != expected {(B, N, hidden_dim)}"
-        )
-        assert error.shape == (B, N, hidden_dim), (
-            f"error shape {error.shape} != expected {(B, N, hidden_dim)}"
-        )
+        assert updated.shape == (
+            B,
+            N,
+            hidden_dim,
+        ), f"updated shape {updated.shape} != expected {(B, N, hidden_dim)}"
+        assert error.shape == (
+            B,
+            N,
+            hidden_dim,
+        ), f"error shape {error.shape} != expected {(B, N, hidden_dim)}"
 
     def test_spectral_norm_registered_on_weight(self) -> None:
         """W must have spectral_norm registered (weight_orig present)."""
         from pcg_llm.arch.node import PCGNode
 
         node = PCGNode(hidden_dim=32)
-        assert hasattr(node.W, "weight_orig"), (
-            "spectral_norm must register 'weight_orig' on node.W"
-        )
+        assert hasattr(node.W, "weight_orig"), "spectral_norm must register 'weight_orig' on node.W"
 
     def test_spectral_norm_sigma_reflects_weight_scale(self) -> None:
         """The spectral_norm sigma estimate must be > 0 and < weight_orig's max SV.
@@ -76,12 +78,10 @@ class TestPCGNode:
 
         updated, error = node(z, neighbors)
 
-        assert updated.dtype == torch.bfloat16, (
-            f"updated dtype should be bfloat16, got {updated.dtype}"
-        )
-        assert error.dtype == torch.bfloat16, (
-            f"error dtype should be bfloat16, got {error.dtype}"
-        )
+        assert (
+            updated.dtype == torch.bfloat16
+        ), f"updated dtype should be bfloat16, got {updated.dtype}"
+        assert error.dtype == torch.bfloat16, f"error dtype should be bfloat16, got {error.dtype}"
 
     def test_float32_input_stays_float32(self) -> None:
         from pcg_llm.arch.node import PCGNode
@@ -105,9 +105,9 @@ class TestPCGNode:
 
         _, error = node(z, neighbors)
 
-        assert error.abs().max().item() > 1e-6, (
-            "Prediction error should be non-zero for non-trivial (z, neighbors)"
-        )
+        assert (
+            error.abs().max().item() > 1e-6
+        ), "Prediction error should be non-zero for non-trivial (z, neighbors)"
 
     def test_gradient_flows_through_forward(self) -> None:
         """Gradient must propagate back through PCGNode.forward without detach."""
@@ -135,6 +135,6 @@ class TestPCGNode:
 
         # error = z - updated; they must sum to z
         reconstructed = updated + error
-        assert torch.allclose(reconstructed, z, atol=1e-5), (
-            "updated + error must equal z (prediction error definition)"
-        )
+        assert torch.allclose(
+            reconstructed, z, atol=1e-5
+        ), "updated + error must equal z (prediction error definition)"

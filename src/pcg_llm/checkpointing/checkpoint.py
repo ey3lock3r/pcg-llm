@@ -4,10 +4,9 @@ import hashlib
 import io
 import json
 import logging
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -55,7 +54,7 @@ class CheckpointManager:
 
         # Step 4: load manifest, add entry, save manifest
         manifest = self._load_manifest()
-        timestamp = datetime.now(tz=timezone.utc).isoformat()
+        timestamp = datetime.now(tz=UTC).isoformat()
 
         entry = {
             "step": step,
@@ -69,9 +68,7 @@ class CheckpointManager:
         }
 
         # Replace any existing entry for this step
-        manifest["checkpoints"] = [
-            e for e in manifest["checkpoints"] if e.get("step") != step
-        ]
+        manifest["checkpoints"] = [e for e in manifest["checkpoints"] if e.get("step") != step]
         manifest["checkpoints"].append(entry)
         manifest["latest_valid_step"] = step
 
@@ -140,21 +137,21 @@ class CheckpointManager:
         """Read manifest.json; return an empty manifest structure if absent."""
         if not self._manifest_path.exists():
             import copy
+
             return copy.deepcopy(_EMPTY_MANIFEST)
         try:
-            return json.loads(self._manifest_path.read_text(encoding="utf-8"))
+            return cast(dict[Any, Any], json.loads(self._manifest_path.read_text(encoding="utf-8")))
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Could not read manifest (%s); starting fresh.", exc)
             import copy
+
             return copy.deepcopy(_EMPTY_MANIFEST)
 
     def _save_manifest(self, manifest: dict) -> None:
         """Write manifest atomically (tmp → rename)."""
         tmp_path = self._manifest_path.with_suffix(".json.tmp")
-        tmp_path.write_text(
-            json.dumps(manifest, indent=2), encoding="utf-8"
-        )
-        os.replace(tmp_path, self._manifest_path)
+        tmp_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        tmp_path.replace(self._manifest_path)
 
     # ------------------------------------------------------------------
     # Internal utilities

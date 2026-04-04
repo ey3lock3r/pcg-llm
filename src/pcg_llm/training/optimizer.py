@@ -14,18 +14,16 @@ References:
 
 from __future__ import annotations
 
-import math
-from typing import Iterable
+from collections.abc import Callable, Iterable
 
 import torch
-import torch.nn as nn
 from torch import Tensor
 from torch.optim import Optimizer
-
 
 # ---------------------------------------------------------------------------
 # Newton-Schulz iteration for approximate matrix orthogonalisation
 # ---------------------------------------------------------------------------
+
 
 def _newton_schulz_5(G: Tensor, steps: int = 5, eps: float = 1e-7) -> Tensor:
     """Return an approximate orthogonal matrix closest to *G* via NS iteration.
@@ -63,6 +61,7 @@ def _newton_schulz_5(G: Tensor, steps: int = 5, eps: float = 1e-7) -> Tensor:
 # MuonOptimizer
 # ---------------------------------------------------------------------------
 
+
 class MuonOptimizer(Optimizer):
     """Momentum Orthogonalised by Newton-Schulz (Muon) for 2-D weight matrices.
 
@@ -98,7 +97,7 @@ class MuonOptimizer(Optimizer):
         super().__init__(param_list, defaults)
 
     @torch.no_grad()
-    def step(self, closure=None):  # type: ignore[override]
+    def step(self, closure: Callable[[], float] | None = None) -> float | None:  # type: ignore[override]
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -126,6 +125,7 @@ class MuonOptimizer(Optimizer):
 # ---------------------------------------------------------------------------
 # HybridOptimizer
 # ---------------------------------------------------------------------------
+
 
 class HybridOptimizer:
     """Hybrid optimizer: Muon for 2-D Linear weights, AdamW for everything else.
@@ -191,7 +191,7 @@ class HybridOptimizer:
         for opt in self._optimizers:
             opt.zero_grad(set_to_none=set_to_none)
 
-    def step(self, closure=None) -> None:
+    def step(self, closure: Callable[[], float] | None = None) -> None:
         for opt in self._optimizers:
             opt.step(closure)
 

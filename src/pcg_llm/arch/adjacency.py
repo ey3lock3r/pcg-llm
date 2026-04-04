@@ -30,9 +30,7 @@ class BlockSparseAdjacency:
         # Boolean activity mask — False means the edge is inactive (pruned).
         self.mask: Tensor = torch.zeros(num_blocks, num_blocks, dtype=torch.bool)
         # Float32 structural weights — zero for inactive edges.
-        self.W_structure: Tensor = torch.zeros(
-            num_blocks, num_blocks, dtype=torch.float32
-        )
+        self.W_structure: Tensor = torch.zeros(num_blocks, num_blocks, dtype=torch.float32)
         self._frozen: bool = False
 
     # ------------------------------------------------------------------
@@ -106,8 +104,7 @@ class BlockSparseAdjacency:
         mask_f = self.mask.float().to(Z.device)  # [N, N]
         # Z: [B, N, D]; we want out[b, i, d] = sum_j mask[i,j] * Z[b, j, d]
         # Einsum: out[b, i, d] = mask[i, j] * Z[b, j, d] summed over j
-        out = torch.einsum("ij,bjd->bid", mask_f, Z)
-        return out
+        return torch.einsum("ij,bjd->bid", mask_f, Z)
 
     # ------------------------------------------------------------------
     # RigL drop-and-grow
@@ -180,9 +177,9 @@ class BlockSparseAdjacency:
                 grow_coords = dormant_indices[grow_idx]
                 self.mask[grow_coords[:, 0], grow_coords[:, 1]] = True
                 # Initialise new weights from gradient signal
-                self.W_structure[grow_coords[:, 0], grow_coords[:, 1]] = (
-                    grad_flat[grow_coords[:, 0], grow_coords[:, 1]]
-                )
+                self.W_structure[grow_coords[:, 0], grow_coords[:, 1]] = grad_flat[
+                    grow_coords[:, 0], grow_coords[:, 1]
+                ]
 
     # ------------------------------------------------------------------
     # Lifecycle

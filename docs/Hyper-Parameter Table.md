@@ -1,4 +1,4 @@
-To ensure your PCG doesn't "explode" (diverge) or "die" (collapse to zero), we need to hit the **Goldilocks Zone** for hyper-parameters. 
+To ensure your PCG doesn't "explode" (diverge) or "die" (collapse to zero), we need to hit the **Goldilocks Zone** for hyper-parameters.
 
 In the 2026 landscape, training **Deep Equilibrium (DEQ)** models requires more finesse than standard Transformers. If your learning rate is too high, the Broyden solver will oscillate; if it's too low, the graph will never "crystallize" its logic.
 
@@ -41,7 +41,7 @@ In the 2026 landscape, training **Deep Equilibrium (DEQ)** models requires more 
 ## 3. Stability & Optimization Tricks
 
 ### The Spectral Constraint
-For both models, you must apply **Spectral Normalization** to the graph weights. This is non-negotiable for DEQ models. Without it, the "energy" of the graph can grow toward infinity, and the solver will fail. 
+For both models, you must apply **Spectral Normalization** to the graph weights. This is non-negotiable for DEQ models. Without it, the "energy" of the graph can grow toward infinity, and the solver will fail.
 
 > **Pro-Tip:** If the solver fails to converge within the Max Iterations, don't crash the program. Instead, use the **"Anderson Mixing"** fall-back. It's a slightly slower but more robust solver that can stabilize "noisy" graph states.
 
@@ -54,8 +54,8 @@ For both models, you must apply **Spectral Normalization** to the graph weights.
 
 
 ### Time-to-Convergence
-* **Tiny PCG:** Should reach "fluency" (making sensible sentences) within **2–4 hours** on your laptop. 
-* **Final PCG:** Should reach SOTA-level reasoning within **48–72 hours** on an H100. 
+* **Tiny PCG:** Should reach "fluency" (making sensible sentences) within **2–4 hours** on your laptop.
+* **Final PCG:** Should reach SOTA-level reasoning within **48–72 hours** on an H100.
 
 ---
 

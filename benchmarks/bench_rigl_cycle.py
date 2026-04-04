@@ -5,12 +5,13 @@ Run:
     python benchmarks/bench_rigl_cycle.py            # compare vs baseline
     python benchmarks/bench_rigl_cycle.py --baseline  # capture baseline
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import torch
@@ -38,9 +39,14 @@ def run_benchmark(num_blocks: int = 64, block_size: int = 64, n_calls: int = 100
 
     return {
         "benchmark": "bench_rigl_cycle",
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "config": {"num_blocks": num_blocks, "block_size": block_size,
-                   "sparsity": 0.90, "n_calls": n_calls, "device": str(device)},
+        "timestamp_utc": datetime.now(UTC).isoformat(),
+        "config": {
+            "num_blocks": num_blocks,
+            "block_size": block_size,
+            "sparsity": 0.90,
+            "n_calls": n_calls,
+            "device": str(device),
+        },
         "results": {
             "wall_clock_ms_total": round(elapsed_ms, 2),
             "wall_clock_ms_per_call": round(elapsed_ms / n_calls, 3),

@@ -53,15 +53,13 @@ class TestFlexAttentionMask:
 
         # Check: tokens in partition 0 (0..63) do NOT attend to partition 1 (64..127)
         cross_partition = partition_mask[:partition_size, partition_size:]
-        assert cross_partition.sum() == 0, (
-            "Block-local mask must have zero cross-partition attention"
-        )
+        assert (
+            cross_partition.sum() == 0
+        ), "Block-local mask must have zero cross-partition attention"
 
         # Check: tokens within same partition CAN attend to each other
         intra_partition = partition_mask[:partition_size, :partition_size]
-        assert intra_partition.sum() > 0, (
-            "Block-local mask must allow intra-partition attention"
-        )
+        assert intra_partition.sum() > 0, "Block-local mask must allow intra-partition attention"
 
     def test_global_summary_token_attends_everywhere(self) -> None:
         """Global summary token at position 0 receives attention from all partitions."""
@@ -82,4 +80,6 @@ class TestFlexAttentionMask:
         assert can_attend(65, 0), "Partition-1 token should attend to global token at 0"
         assert can_attend(127, 0), "Last token should attend to global token at 0"
         # But NOT to non-global tokens in partition 0
-        assert not can_attend(65, 1), "Partition-1 token should NOT attend to non-global partition-0 tokens"
+        assert not can_attend(
+            65, 1
+        ), "Partition-1 token should NOT attend to non-global partition-0 tokens"

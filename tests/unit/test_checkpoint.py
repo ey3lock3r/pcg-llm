@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import tempfile
-from pathlib import Path
 
-import pytest
 import torch
 
 
@@ -53,15 +50,34 @@ class TestCheckpointManager:
     def test_checkpoint_dict_contains_all_required_keys(self, temp_checkpoint_dir) -> None:
         """Contract: all required keys per contracts/checkpoint.md."""
         required_keys = [
-            "schema_version", "step", "config", "model_state_dict",
-            "optimizer_state_dict", "rigl_mask", "rigl_weights",
-            "rigl_schedule_step", "rigl_rerouting_fraction", "rigl_frozen",
-            "anderson_iterates", "anderson_residuals",
-            "curriculum_epoch", "curriculum_shard_index", "curriculum_gating_temp",
-            "loss_crossentropy", "loss_sparsity", "loss_variance_hinge", "loss_total",
-            "gamma_current", "eagle_draft_len", "eagle_accept_rate_ema",
-            "rng_torch", "rng_numpy", "rng_python",
-            "timestamp_utc", "hostname", "sha256",
+            "schema_version",
+            "step",
+            "config",
+            "model_state_dict",
+            "optimizer_state_dict",
+            "rigl_mask",
+            "rigl_weights",
+            "rigl_schedule_step",
+            "rigl_rerouting_fraction",
+            "rigl_frozen",
+            "anderson_iterates",
+            "anderson_residuals",
+            "curriculum_epoch",
+            "curriculum_shard_index",
+            "curriculum_gating_temp",
+            "loss_crossentropy",
+            "loss_sparsity",
+            "loss_variance_hinge",
+            "loss_total",
+            "gamma_current",
+            "eagle_draft_len",
+            "eagle_accept_rate_ema",
+            "rng_torch",
+            "rng_numpy",
+            "rng_python",
+            "timestamp_utc",
+            "hostname",
+            "sha256",
         ]
         ckpt = self._make_minimal_checkpoint_dict(step=100)
         for key in required_keys:
@@ -88,9 +104,9 @@ class TestCheckpointManager:
         with open(saved_path, "rb") as f:
             actual_sha = hashlib.sha256(f.read()).hexdigest()
 
-        assert entry["sha256"] == actual_sha, (
-            f"Manifest SHA-256 {entry['sha256']} != file SHA-256 {actual_sha}"
-        )
+        assert (
+            entry["sha256"] == actual_sha
+        ), f"Manifest SHA-256 {entry['sha256']} != file SHA-256 {actual_sha}"
 
     def test_atomic_write_leaves_no_tmp_on_success(self, temp_checkpoint_dir) -> None:
         from pcg_llm.checkpointing.checkpoint import CheckpointManager
@@ -126,9 +142,9 @@ class TestCheckpointManager:
 
         # Load latest should detect corruption and fall back to step 50
         loaded, loaded_step = manager.load_latest()
-        assert loaded_step == 50, (
-            f"Should fall back to step 50 after step-100 corruption, got {loaded_step}"
-        )
+        assert (
+            loaded_step == 50
+        ), f"Should fall back to step 50 after step-100 corruption, got {loaded_step}"
 
     def test_manifest_latest_valid_step_is_most_recent_valid(self, temp_checkpoint_dir) -> None:
         from pcg_llm.checkpointing.checkpoint import CheckpointManager
@@ -176,7 +192,7 @@ class TestDiskQuotaTriggerFR025:
         import shutil
         from unittest.mock import MagicMock, patch
 
-        from pcg_llm.checkpointing.local import LocalCheckpointBackend, _500MB
+        from pcg_llm.checkpointing.local import _500MB, LocalCheckpointBackend
 
         shutdown_called = MagicMock()
         backend = LocalCheckpointBackend(
@@ -194,10 +210,9 @@ class TestDiskQuotaTriggerFR025:
 
     def test_shutdown_callback_not_called_when_above_500mb(self, tmp_path) -> None:
         """When disk_free >= 500 MB (but < 1 GB), only a warning is logged — no shutdown."""
-        import shutil
         from unittest.mock import MagicMock, patch
 
-        from pcg_llm.checkpointing.local import LocalCheckpointBackend, _500MB, _1GB
+        from pcg_llm.checkpointing.local import _500MB, LocalCheckpointBackend
 
         shutdown_called = MagicMock()
         backend = LocalCheckpointBackend(
@@ -215,10 +230,9 @@ class TestDiskQuotaTriggerFR025:
     def test_disk_quota_warning_logged_below_1gb(self, tmp_path, caplog) -> None:
         """When disk_free < 1 GB (but >= 500 MB), DiskQuotaWarning-level log is emitted."""
         import logging
-        import shutil
         from unittest.mock import patch
 
-        from pcg_llm.checkpointing.local import LocalCheckpointBackend, _500MB
+        from pcg_llm.checkpointing.local import _500MB, LocalCheckpointBackend
 
         backend = LocalCheckpointBackend(checkpoint_dir=str(tmp_path))
 
@@ -230,16 +244,15 @@ class TestDiskQuotaTriggerFR025:
             ):
                 backend._check_disk_quota()
 
-        assert any("low" in r.message.lower() for r in caplog.records), (
-            "A low-disk warning must be logged when free < 1 GB"
-        )
+        assert any(
+            "low" in r.message.lower() for r in caplog.records
+        ), "A low-disk warning must be logged when free < 1 GB"
 
     def test_no_shutdown_callback_does_not_raise(self, tmp_path) -> None:
         """LocalCheckpointBackend without shutdown_callback must not raise at < 500 MB."""
-        import shutil
         from unittest.mock import patch
 
-        from pcg_llm.checkpointing.local import LocalCheckpointBackend, _500MB
+        from pcg_llm.checkpointing.local import _500MB, LocalCheckpointBackend
 
         backend = LocalCheckpointBackend(checkpoint_dir=str(tmp_path))  # no callback
 
