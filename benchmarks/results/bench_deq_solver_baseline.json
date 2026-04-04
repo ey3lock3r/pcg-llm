@@ -1,0 +1,19 @@
+{
+  "benchmark": "bench_deq_solver",
+  "timestamp_utc": "2026-04-04T19:11:41.334550+00:00",
+  "config": {
+    "hidden_dim": 256,
+    "num_blocks": 16,
+    "batch_size": 2,
+    "n_calls": 20,
+    "anderson_window": 3,
+    "max_iter": 12,
+    "device": "cpu"
+  },
+  "results": {
+    "wall_clock_ms_total": 256.28,
+    "wall_clock_ms_per_call": 12.814,
+    "peak_vram_mb": 0.0,
+    "solver_steps_mean": 12.0
+  }
+}

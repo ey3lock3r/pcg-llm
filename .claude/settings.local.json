@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \".specify/scripts/powershell/setup-plan.ps1 -Json\")",
+      "Bash(powershell -Command \".specify/scripts/powershell/update-agent-context.ps1 -AgentType claude\")",
+      "Bash(powershell -Command \".specify/scripts/powershell/check-prerequisites.ps1 -Json\")",
+      "Bash(powershell.exe:*)",
+      "Bash(uv run:*)",
+      "Bash(uv pip:*)",
+      "Bash(pip show:*)",
+      "Bash(powershell -NonInteractive -Command \".specify/scripts/powershell/setup-plan.ps1 -Json\")"
+    ]
+  }
+}

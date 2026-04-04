@@ -1,0 +1,61 @@
+# Pre-commit hooks for pcg-llm
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Ruff - Fast Python linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0
+    hooks:
+      # Linter
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      # Formatter
+      - id: ruff-format
+
+  # Type checking with mypy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        args: [--config-file=pyproject.toml]
+        files: ^src/
+        additional_dependencies:
+          - torch
+          - einops
+
+  # General code quality hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=5000']  # Allow larger files for model configs
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: debug-statements
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: name-tests-test
+        args: ['--pytest-test-first']
+
+  # Spec validation
+  - repo: local
+    hooks:
+      - id: validate-specs
+        name: Validate Specs
+        entry: python scripts/validate_specs.py
+        language: system
+        files: ^specs/.*\.md$
+        pass_filenames: false
+
+# Configuration
+fail_fast: false
+default_language_version:
+  python: python3.13
+
+minimum_pre_commit_version: '3.0.0'
