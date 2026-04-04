@@ -85,6 +85,7 @@ Thumbs.db
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
+!notebooks/*.ipynb
 
 # pyenv
 .python-version
