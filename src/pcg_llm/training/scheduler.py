@@ -56,9 +56,7 @@ class RigLSparsitySchedule:
             return (0.0, True)
 
         fraction = (
-            self.reroute_start
-            * 0.5
-            * (1.0 + math.cos(math.pi * self._current_step / freeze_step))
+            self.reroute_start * 0.5 * (1.0 + math.cos(math.pi * self._current_step / freeze_step))
         )
         return (fraction, False)
 

@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import math
 
-import pytest
-
 
 class TestRigLSparsityScheduleBasic:
     """Tests for normal (pre-freeze) step behaviour."""
@@ -18,9 +16,7 @@ class TestRigLSparsityScheduleBasic:
         """Early steps should return a positive fraction and frozen=False."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched = RigLSparsitySchedule(
-            reroute_start=0.30, total_steps=1000, freeze_step_frac=0.80
-        )
+        sched = RigLSparsitySchedule(reroute_start=0.30, total_steps=1000, freeze_step_frac=0.80)
         fraction, frozen = sched.step()
         assert frozen is False
         assert fraction > 0.0
@@ -30,9 +26,7 @@ class TestRigLSparsityScheduleBasic:
         """At step 1 the cosine fraction should be close to reroute_start."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched = RigLSparsitySchedule(
-            reroute_start=0.30, total_steps=1000, freeze_step_frac=0.80
-        )
+        sched = RigLSparsitySchedule(reroute_start=0.30, total_steps=1000, freeze_step_frac=0.80)
         fraction, frozen = sched.step()
         freeze_step = int(0.80 * 1000)  # 800
         expected = 0.30 * 0.5 * (1.0 + math.cos(math.pi * 1 / freeze_step))
@@ -54,9 +48,7 @@ class TestRigLSparsityScheduleBasic:
         """The re-routing fraction should decrease monotonically before freeze."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched = RigLSparsitySchedule(
-            reroute_start=0.30, total_steps=100, freeze_step_frac=0.80
-        )
+        sched = RigLSparsitySchedule(reroute_start=0.30, total_steps=100, freeze_step_frac=0.80)
         fractions = []
         for _ in range(10):
             f, frozen = sched.step()
@@ -65,9 +57,9 @@ class TestRigLSparsityScheduleBasic:
             fractions.append(f)
 
         for i in range(len(fractions) - 1):
-            assert fractions[i] >= fractions[i + 1], (
-                f"Fraction should be non-increasing: {fractions[i]} < {fractions[i+1]}"
-            )
+            assert (
+                fractions[i] >= fractions[i + 1]
+            ), f"Fraction should be non-increasing: {fractions[i]} < {fractions[i+1]}"
 
 
 class TestRigLSparsityScheduleFreeze:
@@ -100,9 +92,7 @@ class TestRigLSparsityScheduleFreeze:
         """All steps beyond freeze_step must return (0.0, True)."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched = RigLSparsitySchedule(
-            reroute_start=0.30, total_steps=10, freeze_step_frac=0.50
-        )
+        sched = RigLSparsitySchedule(reroute_start=0.30, total_steps=10, freeze_step_frac=0.50)
         # Advance well past the freeze point (freeze_step = 5)
         results = [sched.step() for _ in range(10)]
         post_freeze = [(f, frozen) for f, frozen in results if frozen]
@@ -115,9 +105,7 @@ class TestRigLSparsityScheduleFreeze:
         """freeze_step_frac=1.0 means freeze_step == total_steps; step 1 is before freeze."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched = RigLSparsitySchedule(
-            reroute_start=0.30, total_steps=5, freeze_step_frac=1.0
-        )
+        sched = RigLSparsitySchedule(reroute_start=0.30, total_steps=5, freeze_step_frac=1.0)
         # freeze_step = int(1.0 * 5) = 5; steps 1-4 are before freeze
         for _ in range(4):
             _, frozen = sched.step()
@@ -134,9 +122,7 @@ class TestRigLSparsityScheduleStateDict:
         """state_dict() must return a dict with all four expected keys."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched = RigLSparsitySchedule(
-            reroute_start=0.25, total_steps=500, freeze_step_frac=0.75
-        )
+        sched = RigLSparsitySchedule(reroute_start=0.25, total_steps=500, freeze_step_frac=0.75)
         sd = sched.state_dict()
         assert isinstance(sd, dict)
         for key in ("current_step", "reroute_start", "total_steps", "freeze_step_frac"):
@@ -146,9 +132,7 @@ class TestRigLSparsityScheduleStateDict:
         """state_dict values should reflect construction parameters."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched = RigLSparsitySchedule(
-            reroute_start=0.20, total_steps=200, freeze_step_frac=0.60
-        )
+        sched = RigLSparsitySchedule(reroute_start=0.20, total_steps=200, freeze_step_frac=0.60)
         sd = sched.state_dict()
         assert sd["current_step"] == 0
         assert sd["reroute_start"] == 0.20
@@ -168,9 +152,7 @@ class TestRigLSparsityScheduleStateDict:
         """load_state_dict should restore _current_step from saved state."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched = RigLSparsitySchedule(
-            reroute_start=0.30, total_steps=1000, freeze_step_frac=0.80
-        )
+        sched = RigLSparsitySchedule(reroute_start=0.30, total_steps=1000, freeze_step_frac=0.80)
         for _ in range(42):
             sched.step()
 
@@ -203,9 +185,7 @@ class TestRigLSparsityScheduleStateDict:
         """Saving and loading state_dict should produce identical next-step output."""
         from pcg_llm.training.scheduler import RigLSparsitySchedule
 
-        sched_a = RigLSparsitySchedule(
-            reroute_start=0.30, total_steps=1000, freeze_step_frac=0.80
-        )
+        sched_a = RigLSparsitySchedule(reroute_start=0.30, total_steps=1000, freeze_step_frac=0.80)
         for _ in range(10):
             sched_a.step()
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -20,7 +19,7 @@ class LocalCheckpointBackend:
     def __init__(
         self,
         checkpoint_dir: str,
-        shutdown_callback: "Callable[[], None] | None" = None,
+        shutdown_callback: Callable[[], None] | None = None,
     ) -> None:
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -32,14 +31,13 @@ class LocalCheckpointBackend:
         path = self.checkpoint_dir / f"step-{step:06d}.pt"
         tmp_path = path.with_suffix(".pt.tmp")
         tmp_path.write_bytes(data)
-        os.replace(tmp_path, path)  # atomic on POSIX; best-effort on Windows
+        tmp_path.replace(path)  # atomic on POSIX; best-effort on Windows
         logger.info("Checkpoint written: %s", path)
         return path
 
     def list_checkpoints(self) -> list[Path]:
         """Return all .pt checkpoint files sorted by step (ascending)."""
-        files = sorted(self.checkpoint_dir.glob("step-*.pt"))
-        return files
+        return sorted(self.checkpoint_dir.glob("step-*.pt"))
 
     def _check_disk_quota(self) -> None:
         """Log warnings when disk free space is low."""

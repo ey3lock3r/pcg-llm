@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-
-transformers = pytest.importorskip("transformers", reason="transformers not installed; skip tokenizer tests")
+transformers = pytest.importorskip(
+    "transformers", reason="transformers not installed; skip tokenizer tests"
+)
 
 
 class TestLlama3TokenizerWrapper:

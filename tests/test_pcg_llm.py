@@ -3,8 +3,6 @@
 Validates core package structure and invariants per specs/constitution.md.
 """
 
-import importlib
-
 import pytest
 
 
@@ -74,7 +72,9 @@ class TestConstitutionalConstants:
         Per constitution.md: 'Initialization MUST be at 90% block-sparsity.'
         """
         REQUIRED_INITIAL_SPARSITY = 0.90
-        assert REQUIRED_INITIAL_SPARSITY == 0.90, "Initial sparsity must be 0.90 per constitution.md"
+        assert (
+            REQUIRED_INITIAL_SPARSITY == 0.90
+        ), "Initial sparsity must be 0.90 per constitution.md"
 
     @pytest.mark.convergence
     def test_variance_threshold_tau(self) -> None:
@@ -84,7 +84,9 @@ class TestConstitutionalConstants:
         a threshold tau=0.1 to prevent the trivial zero-state collapse.'
         """
         REQUIRED_VARIANCE_THRESHOLD = 0.1
-        assert REQUIRED_VARIANCE_THRESHOLD == 0.1, "Variance threshold must be 0.1 per constitution.md"
+        assert (
+            REQUIRED_VARIANCE_THRESHOLD == 0.1
+        ), "Variance threshold must be 0.1 per constitution.md"
 
     def test_eagle_tree_width_is_8(self) -> None:
         """Verify EAGLE draft tree width matches constitution.md (K=8).
@@ -100,4 +102,6 @@ class TestConstitutionalConstants:
         Per constitution.md: 'Fallback: 3-step DEQ iteration on logic contradictions.'
         """
         REQUIRED_FALLBACK_ITERATIONS = 3
-        assert REQUIRED_FALLBACK_ITERATIONS == 3, "DEQ fallback must be 3 iterations per constitution.md"
+        assert (
+            REQUIRED_FALLBACK_ITERATIONS == 3
+        ), "DEQ fallback must be 3 iterations per constitution.md"

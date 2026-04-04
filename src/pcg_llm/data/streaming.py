@@ -7,7 +7,7 @@ Uses HuggingFace `datasets` streaming API with deterministic interleaving.
 from __future__ import annotations
 
 import random
-from typing import Iterator
+from collections.abc import Iterator
 
 import torch
 
@@ -15,7 +15,7 @@ import torch
 def load_dataset(*args, **kwargs):  # type: ignore[no-untyped-def]
     """Thin wrapper around datasets.load_dataset for testability (mock target)."""
     try:
-        from datasets import load_dataset as _load_dataset  # type: ignore[import-untyped]
+        from datasets import load_dataset as _load_dataset
     except ImportError as exc:
         raise ImportError(
             "datasets>=2.19.0 is required for streaming. "
@@ -86,7 +86,7 @@ class HuggingFaceStreamingDataset:
         if it is None:
             return None
         try:
-            row = next(it)  # type: ignore[arg-type]
+            row = next(it)
         except (StopIteration, RuntimeError):
             return None
 
@@ -98,7 +98,7 @@ class HuggingFaceStreamingDataset:
                 if isinstance(val, list) and len(val) > 0 and isinstance(val[0], int):
                     ids = val
                     break
-                elif isinstance(val, str):
+                if isinstance(val, str):
                     # Raw text fallback — shouldn't happen with tokenized datasets
                     ids = [ord(c) % 128256 for c in val[: self.seq_len]]
                     break

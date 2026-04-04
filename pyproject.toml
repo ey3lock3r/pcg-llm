@@ -108,12 +108,30 @@ select = [
 ignore = [
     "E501",   # Line too long (handled by formatter)
     "ISC001", # Conflicts with formatter
+    "N803",   # Argument name should be lowercase (ML convention: Z, W, B etc.)
+    "N806",   # Variable in function should be lowercase (ML convention: Z, W, B etc.)
+    "N812",   # Lowercase imported as non-lowercase (F = functional is standard)
+    "EM",     # Exception message rules (too noisy for this codebase)
+    "SIM105", # Use contextlib.suppress (minor style)
+    "SIM108", # Use ternary operator (readability preference)
+    "N801",   # Class name CapWords (nGPTNorm is intentional ML naming)
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "ARG",    # Unused arguments OK in tests
     "S101",   # Assert statements allowed in tests
+    "F841",   # Unused variables common in test setup
+    "B007",   # Loop variable not used in body (use _ by convention)
+    "E741",   # Ambiguous variable name (l, etc.)
+    "SIM117", # Nested with statements
+    "PT011",  # pytest.raises too broad
+    "C408",   # dict() vs {} literal
+    "PTH123", # open() in tests
+]
+"benchmarks/**/*.py" = [
+    "PTH123", # open() in benchmarks
+    "T201",   # print() allowed in benchmarks
 ]
 
 [tool.ruff.format]
@@ -157,7 +175,9 @@ module = [
     "wandb.*",
     "lm_eval.*",
     "google.cloud.*",
+    "google.api_core.*",
     "tenacity.*",
+    "numpy.*",
 ]
 ignore_missing_imports = true
 

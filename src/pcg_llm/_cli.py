@@ -12,6 +12,7 @@ import argparse
 import json
 import logging
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Token-count parser  ("10B", "100B", "1T", plain ints)
 # ---------------------------------------------------------------------------
 
+
 def _parse_tokens(value: str) -> int:
     """Parse a token-count string like '10B' or '100B' into an integer."""
     value = value.strip()
@@ -31,100 +33,187 @@ def _parse_tokens(value: str) -> int:
         if upper.endswith(suffix):
             try:
                 return int(float(upper[:-1]) * mult)
-            except ValueError:
+            except ValueError as exc:
                 raise argparse.ArgumentTypeError(
                     f"Cannot parse token count '{value}' (expected e.g. '10B', '100M')"
-                )
+                ) from exc
     try:
         return int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"Cannot parse token count '{value}'"
-        )
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Cannot parse token count '{value}'") from exc
 
 
 # ---------------------------------------------------------------------------
 # Shared argument registration
 # ---------------------------------------------------------------------------
 
+
 def _add_config_args(parser: argparse.ArgumentParser) -> None:
     """Add all TrainingConfig-equivalent flags to *parser*."""
     # Config file / preset
-    parser.add_argument("--config", type=str, default=None,
-                        help="Path to a JSON config file (all other flags override it)")
-    parser.add_argument("--preset", type=str, choices=["tiny", "3b"], default=None,
-                        help="Named preset: 'tiny' or '3b'")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to a JSON config file (all other flags override it)",
+    )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        choices=["tiny", "3b"],
+        default=None,
+        help="Named preset: 'tiny' or '3b'",
+    )
 
     # Architecture
-    parser.add_argument("--hidden-dim", type=int, default=None,
-                        help="Node state dimension d (default: 512)")
-    parser.add_argument("--seq-len", type=int, default=None, dest="max_seq_len",
-                        help="Max training context length N (default: 2048)")
-    parser.add_argument("--block-size", type=int, default=None,
-                        help="RigL block side length (default: 32)")
+    parser.add_argument(
+        "--hidden-dim", type=int, default=None, help="Node state dimension d (default: 512)"
+    )
+    parser.add_argument(
+        "--seq-len",
+        type=int,
+        default=None,
+        dest="max_seq_len",
+        help="Max training context length N (default: 2048)",
+    )
+    parser.add_argument(
+        "--block-size", type=int, default=None, help="RigL block side length (default: 32)"
+    )
 
     # Sparsity / RigL
-    parser.add_argument("--initial-sparsity", type=float, default=None,
-                        help="Adjacency initialization sparsity (default: 0.70)")
+    parser.add_argument(
+        "--initial-sparsity",
+        type=float,
+        default=None,
+        help="Adjacency initialization sparsity (default: 0.70)",
+    )
 
     # DEQ solver
-    parser.add_argument("--max-solver-iters", type=int, default=None,
-                        help="DEQ solver iteration cap (default: 12)")
-    parser.add_argument("--solver-tol", type=float, default=None, dest="solver_tolerance",
-                        help="DEQ convergence threshold (default: 1e-2)")
+    parser.add_argument(
+        "--max-solver-iters", type=int, default=None, help="DEQ solver iteration cap (default: 12)"
+    )
+    parser.add_argument(
+        "--solver-tol",
+        type=float,
+        default=None,
+        dest="solver_tolerance",
+        help="DEQ convergence threshold (default: 1e-2)",
+    )
 
     # Optimizer / precision
-    parser.add_argument("--optimizer", type=str, choices=["adamw", "muon_adamw"], default=None,
-                        help="Optimizer type (default: 'muon_adamw')")
-    parser.add_argument("--optimizer-bits", type=int, choices=[32, 8], default=None,
-                        help="Optimizer state bits: 32 or 8 (default: 32)")
-    parser.add_argument("--normalize", type=str, choices=["standard", "ngpt"], default=None,
-                        help="Normalization: 'standard' or 'ngpt' (default: 'ngpt')")
-    parser.add_argument("--projection", type=str, choices=["dense", "monarch"], default=None,
-                        help="Projection: 'dense' or 'monarch' (default: 'monarch')")
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        choices=["adamw", "muon_adamw"],
+        default=None,
+        help="Optimizer type (default: 'muon_adamw')",
+    )
+    parser.add_argument(
+        "--optimizer-bits",
+        type=int,
+        choices=[32, 8],
+        default=None,
+        help="Optimizer state bits: 32 or 8 (default: 32)",
+    )
+    parser.add_argument(
+        "--normalize",
+        type=str,
+        choices=["standard", "ngpt"],
+        default=None,
+        help="Normalization: 'standard' or 'ngpt' (default: 'ngpt')",
+    )
+    parser.add_argument(
+        "--projection",
+        type=str,
+        choices=["dense", "monarch"],
+        default=None,
+        help="Projection: 'dense' or 'monarch' (default: 'monarch')",
+    )
 
     # Training hyperparameters
-    parser.add_argument("--base-lr", type=float, default=None,
-                        help="Base learning rate (default: 1e-3)")
-    parser.add_argument("--warmup-steps", type=int, default=None,
-                        help="LR warmup steps (default: 500)")
-    parser.add_argument("--total-tokens", type=_parse_tokens, default=None,
-                        help="Total training tokens, e.g. '10B' or '100B' (default: '10B')")
-    parser.add_argument("--batch-size", type=int, default=None,
-                        help="Per-GPU micro-batch size (default: 8)")
-    parser.add_argument("--grad-accum", type=int, default=None, dest="grad_accum_steps",
-                        help="Gradient accumulation steps (default: 8)")
-    parser.add_argument("--grad-checkpoint", action="store_true", default=None,
-                        help="Enable gradient checkpointing (default: True)")
-    parser.add_argument("--no-grad-checkpoint", action="store_false", dest="grad_checkpoint",
-                        help="Disable gradient checkpointing")
-    parser.add_argument("--cpu-offload-mask", action="store_true", default=None,
-                        help="Offload RigL mask to CPU (default: False)")
-    parser.add_argument("--no-cpu-offload-mask", action="store_false", dest="cpu_offload_mask",
-                        help="Do not offload RigL mask to CPU")
+    parser.add_argument(
+        "--base-lr", type=float, default=None, help="Base learning rate (default: 1e-3)"
+    )
+    parser.add_argument(
+        "--warmup-steps", type=int, default=None, help="LR warmup steps (default: 500)"
+    )
+    parser.add_argument(
+        "--total-tokens",
+        type=_parse_tokens,
+        default=None,
+        help="Total training tokens, e.g. '10B' or '100B' (default: '10B')",
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=None, help="Per-GPU micro-batch size (default: 8)"
+    )
+    parser.add_argument(
+        "--grad-accum",
+        type=int,
+        default=None,
+        dest="grad_accum_steps",
+        help="Gradient accumulation steps (default: 8)",
+    )
+    parser.add_argument(
+        "--grad-checkpoint",
+        action="store_true",
+        default=None,
+        help="Enable gradient checkpointing (default: True)",
+    )
+    parser.add_argument(
+        "--no-grad-checkpoint",
+        action="store_false",
+        dest="grad_checkpoint",
+        help="Disable gradient checkpointing",
+    )
+    parser.add_argument(
+        "--cpu-offload-mask",
+        action="store_true",
+        default=None,
+        help="Offload RigL mask to CPU (default: False)",
+    )
+    parser.add_argument(
+        "--no-cpu-offload-mask",
+        action="store_false",
+        dest="cpu_offload_mask",
+        help="Do not offload RigL mask to CPU",
+    )
 
     # Checkpointing
-    parser.add_argument("--checkpoint-interval", type=int, default=None,
-                        help="Steps between checkpoint saves (default: 500)")
-    parser.add_argument("--checkpoint-backend", type=str, choices=["local", "gcs"], default=None,
-                        help="Checkpoint backend: 'local' or 'gcs' (default: 'local')")
-    parser.add_argument("--checkpoint-dir", type=str, default=None,
-                        help="Checkpoint storage path (default: '/kaggle/working/checkpoints')")
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=int,
+        default=None,
+        help="Steps between checkpoint saves (default: 500)",
+    )
+    parser.add_argument(
+        "--checkpoint-backend",
+        type=str,
+        choices=["local", "gcs"],
+        default=None,
+        help="Checkpoint backend: 'local' or 'gcs' (default: 'local')",
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=str,
+        default=None,
+        help="Checkpoint storage path (default: '/kaggle/working/checkpoints')",
+    )
 
     # Monitoring
-    parser.add_argument("--wandb-project", type=str, default=None,
-                        help="W&B project name (None = disable W&B)")
+    parser.add_argument(
+        "--wandb-project", type=str, default=None, help="W&B project name (None = disable W&B)"
+    )
 
     # Seed
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Global random seed (default: 42)")
+    parser.add_argument("--seed", type=int, default=42, help="Global random seed (default: 42)")
 
 
 # ---------------------------------------------------------------------------
 # Config resolution: file → preset → CLI overrides → defaults
 # ---------------------------------------------------------------------------
 
-def _resolve_config(args: argparse.Namespace) -> "TrainingConfig":  # type: ignore[name-defined]  # noqa: F821
+
+def _resolve_config(args: argparse.Namespace) -> TrainingConfig:  # type: ignore[name-defined]  # noqa: F821
     """Build a TrainingConfig from the parsed args.
 
     Resolution order (later wins):
@@ -144,7 +233,7 @@ def _resolve_config(args: argparse.Namespace) -> "TrainingConfig":  # type: igno
             logger.error(f"Config file not found: {args.config}")
             sys.exit(1)
         try:
-            with open(config_path, encoding="utf-8") as fh:
+            with config_path.open(encoding="utf-8") as fh:
                 file_cfg = json.load(fh)
             base.update(file_cfg)
         except (json.JSONDecodeError, OSError) as exc:
@@ -214,6 +303,7 @@ def _resolve_config(args: argparse.Namespace) -> "TrainingConfig":  # type: igno
 # Subcommand: train
 # ---------------------------------------------------------------------------
 
+
 def _cmd_train(args: argparse.Namespace) -> int:
     """Execute the train subcommand."""
     import random
@@ -228,6 +318,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
     random.seed(seed)
     try:
         import numpy as np
+
         np.random.seed(seed)
     except ImportError:
         pass
@@ -250,12 +341,10 @@ def _cmd_train(args: argparse.Namespace) -> int:
     trainer = PCGTrainer(config=config)
 
     # Build a synthetic dataloader for standalone runs (real data comes from DataCurriculum)
-    def _synthetic_loader():
+    def _synthetic_loader() -> Iterator[Any]:
         """Infinite synthetic token stream for testing/smoke runs."""
         while True:
-            yield torch.randint(
-                0, config.vocab_size, (config.batch_size, config.max_seq_len)
-            )
+            yield torch.randint(0, config.vocab_size, (config.batch_size, config.max_seq_len))
 
     dataloader = _synthetic_loader()
 
@@ -276,6 +365,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
 # Subcommand: evaluate
 # ---------------------------------------------------------------------------
 
+
 def _cmd_evaluate(args: argparse.Namespace) -> int:
     """Execute the evaluate subcommand."""
     checkpoint_path = Path(args.checkpoint)
@@ -291,26 +381,13 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     logger.info(f"Tasks: {tasks}")
     logger.info(f"Quantization: {quantize}")
 
-    try:
-        import torch
-        ckpt = torch.load(checkpoint_path, weights_only=False)
-        config_dict = ckpt.get("config", {})
-
-        from pcg_llm.config import TrainingConfig
-        config = TrainingConfig.from_dict(config_dict) if config_dict else TrainingConfig()
-    except Exception as exc:
-        logger.error(f"Failed to load checkpoint: {exc}")
-        return 1
-
     # Attempt to use BenchmarkHarness if available; otherwise emit a stub result
     results: dict[str, Any] = {}
     try:
         from pcg_llm.evaluation.harness import BenchmarkHarness
-        harness = BenchmarkHarness(config=config, quantize=quantize)
-        results = harness.run(
-            checkpoint_path=str(checkpoint_path),
-            tasks=tasks.split(","),
-        )
+
+        harness = BenchmarkHarness(checkpoint_path=str(checkpoint_path), quantize=quantize)
+        results = harness.evaluate(tasks=tasks.split(","))
     except ImportError:
         logger.warning("BenchmarkHarness not available; producing stub evaluation output")
         for task in tasks.split(","):
@@ -337,6 +414,7 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
 # Subcommand: export-config
 # ---------------------------------------------------------------------------
 
+
 def _cmd_export_config(args: argparse.Namespace) -> int:
     """Execute the export-config subcommand."""
     config = _resolve_config(args)
@@ -359,6 +437,7 @@ def _cmd_export_config(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # Argument parser construction
 # ---------------------------------------------------------------------------
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -459,6 +538,7 @@ def _build_parser() -> argparse.ArgumentParser:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments and dispatch to the appropriate subcommand handler.
 
@@ -481,4 +561,4 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    return func(args)
+    return int(func(args))

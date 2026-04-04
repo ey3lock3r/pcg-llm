@@ -27,9 +27,9 @@ class TestBlockSparseAdjacency:
         adj.initialize_erdos_renyi(sparsity=target_sparsity)
 
         actual = adj.sparsity()
-        assert abs(actual - target_sparsity) <= 0.02, (
-            f"Sparsity should be {target_sparsity} ± 2%, got {actual:.4f}"
-        )
+        assert (
+            abs(actual - target_sparsity) <= 0.02
+        ), f"Sparsity should be {target_sparsity} ± 2%, got {actual:.4f}"
 
     def test_drop_phase_removes_exactly_10_percent(self, small_adjacency) -> None:
         from pcg_llm.arch.adjacency import BlockSparseAdjacency
@@ -44,9 +44,9 @@ class TestBlockSparseAdjacency:
 
         expected_drop = max(1, round(active_before * 0.10))
         actual_drop = active_before - active_after
-        assert actual_drop == expected_drop, (
-            f"Drop phase should remove exactly {expected_drop} blocks, removed {actual_drop}"
-        )
+        assert (
+            actual_drop == expected_drop
+        ), f"Drop phase should remove exactly {expected_drop} blocks, removed {actual_drop}"
 
     def test_grow_phase_activates_highest_gradient_blocks(self, small_adjacency) -> None:
         from pcg_llm.arch.adjacency import BlockSparseAdjacency
@@ -79,9 +79,7 @@ class TestBlockSparseAdjacency:
             grads = torch.randn_like(adj.W_structure).abs()
             adj.drop_and_grow(grads, drop_fraction=0.10, grow_fraction=0.10)
             sp = adj.sparsity()
-            assert 0.80 <= sp <= 0.98, (
-                f"Sparsity {sp:.4f} out of allowed range [0.80, 0.98]"
-            )
+            assert 0.80 <= sp <= 0.98, f"Sparsity {sp:.4f} out of allowed range [0.80, 0.98]"
 
     def test_freeze_prevents_updates(self, small_adjacency) -> None:
         from pcg_llm.arch.adjacency import BlockSparseAdjacency
@@ -94,9 +92,7 @@ class TestBlockSparseAdjacency:
         grads = torch.randn_like(adj.W_structure)
         adj.drop_and_grow(grads, drop_fraction=0.10, grow_fraction=0.10)
 
-        assert torch.equal(adj.mask, mask_before), (
-            "Freeze flag must prevent topology changes"
-        )
+        assert torch.equal(adj.mask, mask_before), "Freeze flag must prevent topology changes"
         assert adj.is_frozen, "is_frozen property should be True after freeze()"
 
     def test_message_pass_returns_correct_shape(self, small_adjacency) -> None:
@@ -110,9 +106,9 @@ class TestBlockSparseAdjacency:
         Z = torch.randn(B, num_blocks, block_size)
         out = adj.message_pass(Z)
 
-        assert out.shape == Z.shape, (
-            f"message_pass output shape {out.shape} must match input {Z.shape}"
-        )
+        assert (
+            out.shape == Z.shape
+        ), f"message_pass output shape {out.shape} must match input {Z.shape}"
 
 
 class TestCPUOffloadFR018:
@@ -173,9 +169,9 @@ class TestCPUOffloadFR018:
         adj.mask = adj.mask.cpu()
         out_after = adj.message_pass(Z)
 
-        assert torch.allclose(out_before, out_after, atol=1e-5), (
-            "message_pass output must be identical before and after mask device transfer"
-        )
+        assert torch.allclose(
+            out_before, out_after, atol=1e-5
+        ), "message_pass output must be identical before and after mask device transfer"
 
     def test_state_dict_round_trip_preserves_mask(self) -> None:
         """state_dict/load_state_dict must preserve mask after a device round-trip."""
@@ -192,6 +188,6 @@ class TestCPUOffloadFR018:
         adj2 = BlockSparseAdjacency(num_blocks=4, block_size=8)
         adj2.load_state_dict(sd)
 
-        assert torch.equal(adj.mask.cpu(), adj2.mask.cpu()), (
-            "Mask must be identical after state_dict round-trip through CPU"
-        )
+        assert torch.equal(
+            adj.mask.cpu(), adj2.mask.cpu()
+        ), "Mask must be identical after state_dict round-trip through CPU"

@@ -8,7 +8,8 @@
       "Bash(uv run:*)",
       "Bash(uv pip:*)",
       "Bash(pip show:*)",
-      "Bash(powershell -NonInteractive -Command \".specify/scripts/powershell/setup-plan.ps1 -Json\")"
+      "Bash(powershell -NonInteractive -Command \".specify/scripts/powershell/setup-plan.ps1 -Json\")",
+      "Bash(pre-commit run:*)"
     ]
   }
 }

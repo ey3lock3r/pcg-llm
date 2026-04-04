@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import cast
+
 import torch
-import torch.nn as nn
 from torch import Tensor
-from typing import Callable
 
 
 def apply_spectral_norm_constraint(W: Tensor) -> Tensor:
@@ -24,7 +25,7 @@ def apply_spectral_norm_constraint(W: Tensor) -> Tensor:
     _, S, _ = torch.linalg.svd(W, full_matrices=False)
     max_sv = S[0]
     if max_sv > 1.0:
-        return W / max_sv
+        return cast(Tensor, W / max_sv)
     return W
 
 
@@ -177,7 +178,8 @@ class ConstrainedDEQSolver:
 
         # Detect optional torchdeq
         try:
-            import torchdeq  # type: ignore[import]
+            import torchdeq
+
             self._torchdeq = torchdeq
         except ImportError:
             self._torchdeq = None
@@ -275,9 +277,7 @@ class ConstrainedDEQSolver:
             steps = int(info_td.get("nstep", self.broyden_max_iter))
             return z_star, {"converged": converged, "solver_steps": steps, "method": "broyden"}
         except Exception:
-            return _broyden_step(
-                f_theta, z0, x, self.broyden_max_iter, self.solver_tolerance
-            )
+            return _broyden_step(f_theta, z0, x, self.broyden_max_iter, self.solver_tolerance)
 
     def _solve_manual_anderson(
         self,

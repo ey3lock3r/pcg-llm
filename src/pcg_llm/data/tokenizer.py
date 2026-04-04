@@ -6,7 +6,7 @@ Provides a uniform encode/decode interface with the Llama-3 Tiktoken vocabulary
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     pass
@@ -26,7 +26,7 @@ class Llama3TokenizerWrapper:
     def __init__(self) -> None:
         self._tokenizer = self._load_tokenizer()
 
-    def _load_tokenizer(self):  # type: ignore[return]
+    def _load_tokenizer(self) -> Any:
         try:
             from transformers import AutoTokenizer
         except ImportError as exc:
@@ -39,8 +39,7 @@ class Llama3TokenizerWrapper:
         # for environments without HuggingFace Hub credentials.
         for model_name in [self.MODEL_NAME, self.FALLBACK_MODEL_NAME]:
             try:
-                tok = AutoTokenizer.from_pretrained(model_name)
-                return tok
+                return AutoTokenizer.from_pretrained(model_name)
             except Exception:  # noqa: BLE001
                 continue
 

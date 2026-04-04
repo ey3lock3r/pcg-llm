@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
-from typing import Any
+from collections.abc import Iterator
+from datetime import UTC
+from typing import Any, cast
 
 import torch
 import torch.nn as nn
@@ -77,7 +78,9 @@ class PCGTrainer:
         )
 
         # Output projection: block_size → vocab_size
-        self.output_proj = nn.Linear(config.block_size, config.vocab_size, bias=False).to(self.device)
+        self.output_proj = nn.Linear(config.block_size, config.vocab_size, bias=False).to(
+            self.device
+        )
 
         # Optimizer
         self.optimizer = self._build_optimizer()
@@ -97,30 +100,35 @@ class PCGTrainer:
 
     def _estimate_total_steps(self) -> int:
         """Estimate total training steps from config."""
-        tokens_per_step = self.config.batch_size * self.config.max_seq_len * self.config.grad_accum_steps
+        tokens_per_step = (
+            self.config.batch_size * self.config.max_seq_len * self.config.grad_accum_steps
+        )
         return max(1, self.config.total_tokens // tokens_per_step)
 
-    def _build_backend(self):
+    def _build_backend(self) -> Any:
         """Build the checkpoint backend based on config."""
         if self.config.checkpoint_backend == "gcs":
             try:
                 from pcg_llm.checkpointing.gcs import GCSCheckpointBackend
+
                 return GCSCheckpointBackend(checkpoint_dir=self.config.checkpoint_dir)
             except ImportError:
-                logger.warning("GCS backend requested but google-cloud-storage not installed; using local")
+                logger.warning(
+                    "GCS backend requested but google-cloud-storage not installed; using local"
+                )
         return LocalCheckpointBackend(checkpoint_dir=self.config.checkpoint_dir)
 
-    def _build_optimizer(self) -> torch.optim.Optimizer:
+    def _build_optimizer(self) -> Any:
         """Build optimizer based on config."""
         params = list(self.node.parameters()) + list(self.output_proj.parameters())
 
         if self.config.optimizer == "muon_adamw":
             try:
                 from pcg_llm.training.optimizer import HybridOptimizer
+
                 return HybridOptimizer(
-                    model_params=params,
+                    params,
                     base_lr=self.config.base_lr,
-                    optimizer_bits=self.config.optimizer_bits,
                 )
             except ImportError:
                 logger.warning("MuonOptimizer not available; falling back to AdamW")
@@ -128,7 +136,9 @@ class PCGTrainer:
         if self.config.optimizer_bits == 8:
             try:
                 import bitsandbytes as bnb
-                return bnb.optim.AdamW8bit(params, lr=self.config.base_lr)
+
+                if hasattr(bnb.optim, "AdamW8bit"):
+                    return bnb.optim.AdamW8bit(params, lr=self.config.base_lr)
             except ImportError:
                 logger.warning("bitsandbytes not available; using standard AdamW")
 
@@ -170,7 +180,7 @@ class PCGTrainer:
         """Assemble all required keys per contracts/checkpoint.md."""
         import platform
         import random
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         return {
             "schema_version": "1.0",
@@ -181,7 +191,9 @@ class PCGTrainer:
             "rigl_mask": self.adjacency.mask.cpu(),
             "rigl_weights": self.adjacency.W_structure.cpu(),
             "rigl_schedule_step": self.scheduler._current_step,
-            "rigl_rerouting_fraction": self.scheduler.step()[0] if not self.adjacency.is_frozen else 0.0,
+            "rigl_rerouting_fraction": self.scheduler.step()[0]
+            if not self.adjacency.is_frozen
+            else 0.0,
             "rigl_frozen": self.adjacency.is_frozen,
             "anderson_iterates": [],
             "anderson_residuals": [],
@@ -198,7 +210,7 @@ class PCGTrainer:
             "rng_torch": {"cpu": torch.get_rng_state()},
             "rng_numpy": b"",
             "rng_python": random.getstate(),
-            "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "timestamp_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "hostname": platform.node(),
             "sha256": "",  # filled in by CheckpointManager
         }
@@ -233,14 +245,15 @@ class PCGTrainer:
                 def _body(z_: torch.Tensor) -> torch.Tensor:
                     aggregated = self.adjacency.message_pass(z_)
                     updated, _ = self.node(z_, aggregated)
-                    return updated
+                    return cast(torch.Tensor, updated)
 
-                return cp.checkpoint(_body, z, use_reentrant=False)
+                return cast(torch.Tensor, cp.checkpoint(_body, z, use_reentrant=False))
         else:
+
             def f_theta(z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
                 aggregated = self.adjacency.message_pass(z)
                 updated, _ = self.node(z, aggregated)
-                return updated
+                return cast(torch.Tensor, updated)
 
         # Solve for fixed point
         Z_star, info = self.solver.solve(f_theta, Z0, Z0)
@@ -277,13 +290,17 @@ class PCGTrainer:
                 self.adjacency.freeze()
                 logger.info(f"RigL: topology frozen at step {self.step}")
             elif not self.adjacency.is_frozen:
-                grads = self.adjacency.W_structure.grad if self.adjacency.W_structure.grad is not None \
+                grads = (
+                    self.adjacency.W_structure.grad
+                    if self.adjacency.W_structure.grad is not None
                     else torch.randn_like(self.adjacency.W_structure).abs()
+                )
                 self.adjacency.drop_and_grow(grads)
 
         self._last_loss = total_loss.item()
-        self._last_metrics = {k: v.item() if hasattr(v, "item") else v
-                              for k, v in components.items()}
+        self._last_metrics = {
+            k: v.item() if hasattr(v, "item") else v for k, v in components.items()
+        }
 
         return {
             "loss_total": total_loss.item(),
@@ -291,12 +308,14 @@ class PCGTrainer:
             "sparsity": self.adjacency.sparsity(),
             "solver_steps": solver_steps,
             "gamma": components["gamma"],
-            "node_variance": components["variance"].item() if hasattr(components["variance"], "item") else 0.0,
+            "node_variance": components["variance"].item()
+            if hasattr(components["variance"], "item")
+            else 0.0,
         }
 
     def train(
         self,
-        dataloader,
+        dataloader: Iterator[Any],
         resume: bool = True,
     ) -> None:
         """Main training loop.
@@ -310,6 +329,7 @@ class PCGTrainer:
 
         try:
             import wandb
+
             has_wandb = self.config.wandb_project is not None
             if has_wandb:
                 wandb.init(project=self.config.wandb_project, config=self.config.to_dict())
@@ -408,7 +428,7 @@ class PCGTrainer:
         with torch.no_grad():
             for _ in range(max_new_tokens):
                 # Build context (last max_seq_len tokens)
-                context = tokens[-self.config.max_seq_len:]
+                context = tokens[-self.config.max_seq_len :]
                 # Pad if needed
                 pad_len = self.config.max_seq_len - len(context)
                 context_padded = [0] * pad_len + context
@@ -423,7 +443,7 @@ class PCGTrainer:
                 def f_theta(z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
                     agg = self.adjacency.message_pass(z)
                     updated, _ = self.node(z, agg)
-                    return updated
+                    return cast(torch.Tensor, updated)
 
                 Z_star, _ = self.solver.solve(f_theta, Z0, Z0)
                 logits = self.output_proj(Z_star[:, -1, :])  # last block

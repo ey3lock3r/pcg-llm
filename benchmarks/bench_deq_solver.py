@@ -7,12 +7,13 @@ Run:
 
 Writes results to benchmarks/results/bench_deq_solver_baseline.json on --baseline.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import torch
@@ -70,11 +71,14 @@ def run_benchmark(
 
     return {
         "benchmark": "bench_deq_solver",
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "timestamp_utc": datetime.now(UTC).isoformat(),
         "config": {
-            "hidden_dim": hidden_dim, "num_blocks": num_blocks,
-            "batch_size": batch_size, "n_calls": n_calls,
-            "anderson_window": anderson_window, "max_iter": max_iter,
+            "hidden_dim": hidden_dim,
+            "num_blocks": num_blocks,
+            "batch_size": batch_size,
+            "n_calls": n_calls,
+            "anderson_window": anderson_window,
+            "max_iter": max_iter,
             "device": str(device),
         },
         "results": {
@@ -128,7 +132,9 @@ def main() -> None:
             improvement = (b_ms - c_ms) / b_ms * 100 if b_ms > 0 else 0
             print(f"\nBaseline:  {b_ms:.3f} ms/call")
             print(f"Current:   {c_ms:.3f} ms/call")
-            print(f"Change:    {improvement:+.1f}%  {'✓ PASS' if improvement >= 20 else '✗ FAIL (need >=20%)'}")
+            print(
+                f"Change:    {improvement:+.1f}%  {'✓ PASS' if improvement >= 20 else '✗ FAIL (need >=20%)'}"
+            )
         else:
             print("\nNo baseline found. Run with --baseline to capture one.")
 

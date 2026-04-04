@@ -48,9 +48,9 @@ class TestConstrainedDEQSolverConvergence:
         z_star, info = solver.solve(f, z0, x)
 
         assert info["converged"], "Anderson should converge for this contractive system"
-        assert info["solver_steps"] <= 12, (
-            f"Should converge in ≤12 steps, took {info['solver_steps']}"
-        )
+        assert (
+            info["solver_steps"] <= 12
+        ), f"Should converge in ≤12 steps, took {info['solver_steps']}"
         assert z_star.shape == z0.shape
 
     def test_fixed_point_condition_satisfied(self, simple_linear_f) -> None:
@@ -71,9 +71,7 @@ class TestConstrainedDEQSolverConvergence:
         z_star, info = solver.solve(f, z0, x)
 
         residual = torch.norm(z_star - f(z_star, x)).item()
-        assert residual < tol * 10, (
-            f"Fixed-point residual {residual:.4f} should be < {tol * 10}"
-        )
+        assert residual < tol * 10, f"Fixed-point residual {residual:.4f} should be < {tol * 10}"
 
     def test_solver_logs_step_count(self, simple_linear_f) -> None:
         from pcg_llm.arch.deq_solver import ConstrainedDEQSolver
@@ -132,9 +130,9 @@ class TestConstrainedDEQSolverConvergence:
         # Compute max singular value
         _, S, _ = torch.linalg.svd(W_normed)
         max_sv = S.max().item()
-        assert max_sv <= 1.0 + 1e-5, (
-            f"Spectral norm should be ≤ 1.0 after normalization, got {max_sv:.4f}"
-        )
+        assert (
+            max_sv <= 1.0 + 1e-5
+        ), f"Spectral norm should be ≤ 1.0 after normalization, got {max_sv:.4f}"
 
     def test_anderson_window_m3(self, simple_linear_f) -> None:
         """Verify m=3 history buffer is used by default (research decision)."""
@@ -179,9 +177,9 @@ class TestThreeStepFallbackFR011:
 
         _, info = fallback_solver.solve(f, z0, x)
 
-        assert info["solver_steps"] <= 3, (
-            f"FR-011 fallback: solver_steps must be <= 3, got {info['solver_steps']}"
-        )
+        assert (
+            info["solver_steps"] <= 3
+        ), f"FR-011 fallback: solver_steps must be <= 3, got {info['solver_steps']}"
 
     def test_fallback_solver_produces_valid_output_tensor(self) -> None:
         """3-step solver must return a tensor of correct shape (no crash)."""
@@ -221,4 +219,3 @@ class TestThreeStepFallbackFR011:
         )
         # Production solver may use more steps (it should converge better)
         assert prod_info["solver_steps"] <= 25
-

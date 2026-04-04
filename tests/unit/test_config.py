@@ -44,7 +44,7 @@ class TestTrainingConfigValidation:
         from pcg_llm.config import TrainingConfig
 
         cfg = TrainingConfig.from_preset("tiny")
-        for fw, sv in zip(cfg.dataset_fineweb_frac, cfg.dataset_stack_frac):
+        for fw, sv in zip(cfg.dataset_fineweb_frac, cfg.dataset_stack_frac, strict=False):
             assert abs(fw + sv - 1.0) < 1e-9, f"Fractions must sum to 1.0, got {fw + sv}"
 
     def test_mixing_fractions_invalid_raises(self) -> None:

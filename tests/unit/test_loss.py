@@ -45,9 +45,9 @@ class TestFreeEnergyLoss:
 
         # Reference CE
         ref_ce = F.cross_entropy(logits, targets)
-        assert abs(components["cross_entropy"].item() - ref_ce.item()) < 1e-4, (
-            f"CE term {components['cross_entropy'].item():.6f} != ref {ref_ce.item():.6f}"
-        )
+        assert (
+            abs(components["cross_entropy"].item() - ref_ce.item()) < 1e-4
+        ), f"CE term {components['cross_entropy'].item():.6f} != ref {ref_ce.item():.6f}"
 
     def test_l1_sparsity_penalty_equals_sum_of_abs_weights(self, loss_fn) -> None:
         """L1 penalty = lambda * sum(|A|)."""
@@ -78,9 +78,9 @@ class TestFreeEnergyLoss:
         # hinge = max(0, tau - Var(Z*)) should be ~0 for high-variance Z
         assert components["variance_hinge"].item() >= 0, "Hinge must be non-negative"
         # For very high variance, penalty should be near 0
-        assert components["variance_hinge"].item() < 0.01, (
-            "Variance hinge should be ~0 when Var(Z*) >> tau"
-        )
+        assert (
+            components["variance_hinge"].item() < 0.01
+        ), "Variance hinge should be ~0 when Var(Z*) >> tau"
 
     def test_variance_hinge_positive_when_variance_below_threshold(self, loss_fn) -> None:
         """Variance hinge is positive when Var(Z*) < tau."""
@@ -92,9 +92,9 @@ class TestFreeEnergyLoss:
 
         _, components = loss_fn(logits, targets, adj, Z_low_var)
 
-        assert components["variance_hinge"].item() > 0, (
-            "Variance hinge must be positive when Var(Z*) = 0 < tau=0.1"
-        )
+        assert (
+            components["variance_hinge"].item() > 0
+        ), "Variance hinge must be positive when Var(Z*) = 0 < tau=0.1"
 
     def test_combined_loss_decreases_when_model_improves(self) -> None:
         """Combined loss should decrease as logits improve."""
@@ -116,9 +116,7 @@ class TestFreeEnergyLoss:
         logits_good[:, 0] = 10.0
         loss_good, _ = loss_fn(logits_good, targets, adj, Z_star)
 
-        assert loss_good.item() < loss_bad.item(), (
-            "Loss must decrease when logits improve"
-        )
+        assert loss_good.item() < loss_bad.item(), "Loss must decrease when logits improve"
 
     def test_anti_collapse_guard_triggers_gamma_nudge(self) -> None:
         """Gamma auto-nudge +10% when variance < tau for 10 consecutive steps."""
@@ -143,6 +141,6 @@ class TestFreeEnergyLoss:
         for _ in range(10):
             loss_fn(logits, targets, adj, Z_low_var)
 
-        assert loss_fn.gamma_variance > initial_gamma, (
-            "Gamma must auto-nudge (+10%) after 10 consecutive low-variance steps"
-        )
+        assert (
+            loss_fn.gamma_variance > initial_gamma
+        ), "Gamma must auto-nudge (+10%) after 10 consecutive low-variance steps"

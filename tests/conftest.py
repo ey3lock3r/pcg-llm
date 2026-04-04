@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Hardware / environment skip markers
@@ -18,9 +16,11 @@ import pytest
 def _seed_rng() -> None:
     """Seed torch and Python RNG before each test for determinism."""
     import random
+
     random.seed(0)
     try:
         import torch
+
         torch.manual_seed(0)
     except ImportError:
         pass

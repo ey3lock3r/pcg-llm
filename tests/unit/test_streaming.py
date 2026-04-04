@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestHuggingFaceStreamingDataset:
     """Tests for dataset streaming with configurable mixing ratios."""
@@ -112,9 +110,9 @@ class TestHuggingFaceStreamingDataset:
             # Exhaust the dataset to trigger epoch boundary
             for _ in ds:
                 pass
-            assert ds.epoch > initial_epoch or ds.shard_index > 0, (
-                "Epoch or shard index should advance after exhausting data"
-            )
+            assert (
+                ds.epoch > initial_epoch or ds.shard_index > 0
+            ), "Epoch or shard index should advance after exhausting data"
 
     def test_stream_shape_is_correct(self) -> None:
         import torch

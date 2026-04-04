@@ -6,8 +6,6 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestSignalHandlerInit:
     """Tests for construction and _register."""
@@ -147,9 +145,7 @@ class TestSignalHandlerCheckAndSave:
 
         manager.save.assert_called_once_with(checkpoint, 42)
 
-    def test_check_and_save_logs_warning_when_save_exceeds_threshold(
-        self, caplog
-    ) -> None:
+    def test_check_and_save_logs_warning_when_save_exceeds_threshold(self, caplog) -> None:
         """A warning must be logged when the save duration exceeds GCP_CHECKPOINT_WARN_SECONDS (20s)."""
         from pcg_llm.checkpointing.signals import SignalHandler
 
@@ -170,10 +166,10 @@ class TestSignalHandlerCheckAndSave:
                 handler.check_and_save({"model": "state"}, step=1)
 
         warning_messages = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
-        assert any("21" in msg or "exceeded" in msg.lower() or "soft deadline" in msg.lower()
-                   for msg in warning_messages), (
-            f"Expected a slow-save warning in: {warning_messages}"
-        )
+        assert any(
+            "21" in msg or "exceeded" in msg.lower() or "soft deadline" in msg.lower()
+            for msg in warning_messages
+        ), f"Expected a slow-save warning in: {warning_messages}"
 
     def test_check_and_save_no_warning_for_fast_save(self, caplog) -> None:
         """No warning should be logged when the save completes quickly (< 20s)."""
@@ -192,16 +188,15 @@ class TestSignalHandlerCheckAndSave:
 
         # No "exceeded" warning should appear (deadline-related messages only)
         deadline_warnings = [
-            r.message for r in caplog.records
+            r.message
+            for r in caplog.records
             if r.levelno >= logging.WARNING and "soft deadline" in r.message.lower()
         ]
-        assert len(deadline_warnings) == 0, (
-            f"Unexpected slow-save warning for a fast (1s) checkpoint: {deadline_warnings}"
-        )
+        assert (
+            len(deadline_warnings) == 0
+        ), f"Unexpected slow-save warning for a fast (1s) checkpoint: {deadline_warnings}"
 
-    def test_check_and_save_logs_error_when_total_time_exceeds_deadline(
-        self, caplog
-    ) -> None:
+    def test_check_and_save_logs_error_when_total_time_exceeds_deadline(self, caplog) -> None:
         """An error must be logged when total time since SIGTERM exceeds 25s."""
         from pcg_llm.checkpointing.signals import SignalHandler
 
@@ -221,6 +216,6 @@ class TestSignalHandlerCheckAndSave:
                 handler.check_and_save({"model": "state"}, step=1)
 
         error_messages = [r.message for r in caplog.records if r.levelno >= logging.ERROR]
-        assert any("SIGTERM" in msg or "reclaim" in msg.lower() for msg in error_messages), (
-            f"Expected a GCP-deadline error in: {error_messages}"
-        )
+        assert any(
+            "SIGTERM" in msg or "reclaim" in msg.lower() for msg in error_messages
+        ), f"Expected a GCP-deadline error in: {error_messages}"

@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import TYPE_CHECKING
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 try:
-    from google.cloud import storage  # type: ignore[import-untyped]
+    from google.cloud import storage
 
     _GCS_AVAILABLE = True
 except ImportError:
-    storage = None  # type: ignore[assignment]
+    storage = None
     _GCS_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
@@ -34,11 +34,11 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 try:
-    import tenacity  # type: ignore[import-untyped]
+    import tenacity
 
     _TENACITY_AVAILABLE = True
 except ImportError:
-    tenacity = None  # type: ignore[assignment]
+    tenacity = None
     _TENACITY_AVAILABLE = False
 
 _MAX_ATTEMPTS = 5
@@ -49,14 +49,14 @@ _MAX_DELAY_S = 32.0
 def _is_transient(exc: BaseException) -> bool:
     """Return True if *exc* is a transient GCS ServiceUnavailable error."""
     try:
-        from google.api_core import exceptions as gapi_exc  # type: ignore[import-untyped]
+        from google.api_core import exceptions as gapi_exc
 
         return isinstance(exc, gapi_exc.ServiceUnavailable)
     except ImportError:
         return False
 
 
-def _retry_manual(fn, *args, **kwargs):
+def _retry_manual(fn: Any, *args: Any, **kwargs: Any) -> Any:
     """Simple manual exponential-backoff retry loop (fallback when tenacity absent)."""
     delay = _BASE_DELAY_S
     last_exc: BaseException | None = None
@@ -83,9 +83,9 @@ def _retry_manual(fn, *args, **kwargs):
 
 
 if _TENACITY_AVAILABLE:
-    import tenacity as _tenacity  # type: ignore[no-redef]
+    import tenacity as _tenacity
 
-    def _retry_upload(fn, *args, **kwargs):
+    def _retry_upload(fn: Any, *args: Any, **kwargs: Any) -> Any:
         """Retry wrapper using tenacity."""
         retryer = _tenacity.retry(
             retry=_tenacity.retry_if_exception(_is_transient),
@@ -98,7 +98,7 @@ if _TENACITY_AVAILABLE:
         return retryer(fn)(*args, **kwargs)
 
 else:
-    _retry_upload = _retry_manual  # type: ignore[assignment]
+    _retry_upload = _retry_manual
 
 
 # ---------------------------------------------------------------------------
@@ -125,11 +125,11 @@ class GCSCheckpointBackend:
                 "Install it with: pip install google-cloud-storage>=2.16"
             )
         if not checkpoint_dir.startswith("gs://"):
-            raise ValueError(
-                f"checkpoint_dir must start with 'gs://', got '{checkpoint_dir}'"
-            )
+            raise ValueError(f"checkpoint_dir must start with 'gs://', got '{checkpoint_dir}'")
         # Normalise: ensure trailing slash on the prefix portion
-        self.checkpoint_dir = checkpoint_dir if checkpoint_dir.endswith("/") else checkpoint_dir + "/"
+        self.checkpoint_dir = (
+            checkpoint_dir if checkpoint_dir.endswith("/") else checkpoint_dir + "/"
+        )
         self._client = storage.Client()
 
     # ------------------------------------------------------------------
@@ -153,21 +153,18 @@ class GCSCheckpointBackend:
         bucket = self._client.bucket(bucket_name)
         # Obtain blob handles up front so each retry does not re-call bucket.blob()
         tmp_blob = bucket.blob(tmp_blob_name)
-        final_blob = bucket.blob(final_blob_name)
 
-        def _do_upload():
+        def _do_upload() -> None:
             tmp_blob.upload_from_string(data, content_type="application/octet-stream")
             logger.debug("GCS tmp blob written: gs://%s/%s", bucket_name, tmp_blob_name)
 
         _retry_upload(_do_upload)
 
-        def _do_rename():
+        def _do_rename() -> None:
             # GCS "rename" = server-side copy (rewrite) + delete source
             bucket.copy_blob(tmp_blob, bucket, final_blob_name)
             tmp_blob.delete()
-            logger.info(
-                "GCS checkpoint written: gs://%s/%s", bucket_name, final_blob_name
-            )
+            logger.info("GCS checkpoint written: gs://%s/%s", bucket_name, final_blob_name)
 
         _retry_upload(_do_rename)
 
@@ -203,7 +200,7 @@ class GCSCheckpointBackend:
 
         The prefix always ends with ``/`` (or is empty for bucket root).
         """
-        without_scheme = self.checkpoint_dir[len("gs://"):]
+        without_scheme = self.checkpoint_dir[len("gs://") :]
         slash_idx = without_scheme.find("/")
         if slash_idx == -1:
             return without_scheme, ""

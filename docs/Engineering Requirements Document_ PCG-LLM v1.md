@@ -1,4 +1,4 @@
-User: 
+User:
 does the final spec have enough information to avoid confusions or misinterpretation for generating the final technical requirements for implementation? what are the other key items/components or areas that need to be clarified? also create a team of experts to discuss this and come up with a detailed specification
 
 ---
@@ -57,7 +57,7 @@ To solve the multi-GPU bottleneck raised by Sarah, we will not use standard FSDP
 
 * **Logic:** The $4096$ input nodes are divided into chunks of $512$ nodes. Each chunk is assigned to a specific GPU.
 * **Intra-GPU Routing:** Dense, high-speed routing is allowed freely within the $512$ nodes on the same GPU.
-* **Inter-GPU Routing:** Connections that cross GPU boundaries are subjected to a **10x higher sparsity penalty** ($\lambda_{sparse}$). 
+* **Inter-GPU Routing:** Connections that cross GPU boundaries are subjected to a **10x higher sparsity penalty** ($\lambda_{sparse}$).
 * **Result:** The PCG naturally evolves to perform local reasoning on individual GPUs, only passing highly compressed "summary" errors across the NVLink, preserving hardware bandwidth.
 
 ## 5. Training Loop & Optimizer
@@ -77,4 +77,3 @@ During inference, the model operates in Non-Autoregressive (NAR) Mode.
 * **Correction:** If the Softmax confidence of any token is below $0.85$, the local error threshold triggers. The PCG re-engages the iterative loops exclusively on that token's sub-graph until confidence exceeds the threshold.
 
 ---
-
