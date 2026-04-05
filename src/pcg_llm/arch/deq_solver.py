@@ -310,12 +310,14 @@ class ConstrainedDEQSolver:
                 self.anderson_window,
                 beta=self.anderson_beta,  # used as Tikhonov regularisation in LSQ solve
             )
-            # Convergence criterion: change in iterate (||z_next - z||).
-            # This is cheaper than re-evaluating f_theta at z_next and
-            # correctly measures whether the Anderson-mixed z_next has moved
-            # significantly, unlike checking the residual at the *old* z.
+            # Convergence criterion: per-element RMS change in iterate.
+            # Dividing by sqrt(numel) normalises for tensor size so that
+            # solver_tolerance means the same thing regardless of batch size,
+            # num_blocks, or block_size.  Without this, a model with 64 blocks
+            # (numel ~32 k) would need 8–14× more iterations than the 4-block
+            # smoke test to satisfy the same raw norm threshold.
             with torch.no_grad():
-                update_norm = (z_next - z).norm().item()
+                update_norm = (z_next - z).norm().item() / (z.numel() ** 0.5)
             if update_norm < self.solver_tolerance:
                 return z_next, {"converged": True, "solver_steps": step + 1, "method": "anderson"}
             z = z_next
