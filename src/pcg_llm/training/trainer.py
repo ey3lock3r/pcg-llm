@@ -436,6 +436,10 @@ class PCGTrainer:
             "node_variance": components["variance"].item()
             if hasattr(components["variance"], "item")
             else 0.0,
+            # EAGLE acceptance rate EMA — 0.0 during pre-training; updates after fine_tune_eagle()
+            "eagle_accept_rate": self.eagle_head.accept_rate_ema
+            if hasattr(self, "eagle_head")
+            else 0.0,
         }
 
     def _optimizer_step(self) -> None:
