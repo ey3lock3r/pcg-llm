@@ -53,8 +53,15 @@ def _newton_schulz_5(G: Tensor, steps: int = 5, eps: float = 1e-7) -> Tensor:
     # Polynomial coefficients (Muon paper)
     a, b, c = 3.4445, -4.7750, 2.0315
     for _ in range(steps):
-        A = X @ X.T
-        X = a * X + b * (A @ X) + c * (A @ A @ X)
+        if X.shape[0] >= X.shape[1]:
+            # Tall or square: use n×n intermediate (X^T X) to avoid allocating
+            # an m×m matrix when m >> n (e.g. output_proj [vocab, d]).
+            A = X.T @ X
+            X = a * X + b * (X @ A) + c * (X @ A @ A)
+        else:
+            # Wide: m×m is smaller than n×n, use left-multiply form.
+            A = X @ X.T
+            X = a * X + b * (A @ X) + c * (A @ A @ X)
     return X.to(G.dtype)
 
 
