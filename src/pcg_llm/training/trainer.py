@@ -128,11 +128,16 @@ class PCGTrainer:
             self.device
         )
 
+        # Token embedding: vocab_size → block_size
+        # Each block is represented by its first token; embedding maps token ID → dense vector.
+        self.embedding = nn.Embedding(config.vocab_size, config.block_size).to(self.device)
+
         # ------------------------------------------------------------------
         # Keep raw (unwrapped) references for checkpoint save/load
         # ------------------------------------------------------------------
         self._raw_node: nn.Module = self.node
         self._raw_output_proj: nn.Module = self.output_proj
+        self._raw_embedding: nn.Module = self.embedding
 
         # ------------------------------------------------------------------
         # DDP model wrapping — must happen BEFORE _build_optimizer
@@ -145,6 +150,9 @@ class PCGTrainer:
             )
             self.output_proj = DistributedDataParallel(  # type: ignore[assignment]
                 self.output_proj, device_ids=[self._local_rank], broadcast_buffers=True
+            )
+            self.embedding = DistributedDataParallel(  # type: ignore[assignment]
+                self.embedding, device_ids=[self._local_rank], broadcast_buffers=False
             )
 
         # ------------------------------------------------------------------
@@ -202,7 +210,11 @@ class PCGTrainer:
 
     def _build_optimizer(self) -> Any:
         """Build optimizer from raw (unwrapped) parameters."""
-        params = list(self._raw_node.parameters()) + list(self._raw_output_proj.parameters())
+        params = (
+            list(self._raw_node.parameters())
+            + list(self._raw_output_proj.parameters())
+            + list(self._raw_embedding.parameters())
+        )
 
         if self.config.optimizer == "muon_adamw":
             try:
@@ -238,6 +250,8 @@ class PCGTrainer:
             dist.broadcast(param.data, src=0)
         for param in self._raw_output_proj.parameters():
             dist.broadcast(param.data, src=0)
+        for param in self._raw_embedding.parameters():
+            dist.broadcast(param.data, src=0)
 
         # Adjacency (already on self.device from __init__)
         dist.broadcast(self.adjacency.W_structure.data, src=0)
@@ -268,6 +282,8 @@ class PCGTrainer:
         """Restore trainer state from a checkpoint dict (called on rank 0 only)."""
         if "model_state_dict" in ckpt and ckpt["model_state_dict"]:
             self._raw_node.load_state_dict(ckpt["model_state_dict"], strict=False)
+        if "embedding_state_dict" in ckpt and ckpt["embedding_state_dict"]:
+            self._raw_embedding.load_state_dict(ckpt["embedding_state_dict"], strict=False)
         if "optimizer_state_dict" in ckpt and ckpt["optimizer_state_dict"]:
             try:
                 self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -298,6 +314,9 @@ class PCGTrainer:
             "step": step,
             "config": self.config.to_dict(),
             "model_state_dict": {k: v.cpu() for k, v in self._raw_node.state_dict().items()},
+            "embedding_state_dict": {
+                k: v.cpu() for k, v in self._raw_embedding.state_dict().items()
+            },
             "optimizer_state_dict": self.optimizer.state_dict(),
             "rigl_mask": self.adjacency.mask.cpu(),
             "rigl_weights": self.adjacency.W_structure.data.cpu(),
@@ -349,30 +368,27 @@ class PCGTrainer:
         B, L = batch.shape
         num_blocks = L // self.config.block_size
 
-        # Reshape tokens into blocks: [B, num_blocks, block_size]
-        Z0 = torch.zeros(B, num_blocks, self.config.block_size, device=self.device)
+        # Embed the first token of each block: [B, num_blocks]
+        block_input_tokens = batch[:, :: self.config.block_size]  # [B, num_blocks]
+        Z0 = self.embedding(block_input_tokens)  # [B, num_blocks, block_size]
 
-        token_embeds = batch.float() / self.config.vocab_size
-        token_blocks = token_embeds.reshape(B, num_blocks, self.config.block_size)
-        Z0 = Z0 + token_blocks
-
-        # DEQ f_theta: one message-pass step through the PCG node
+        # DEQ f_theta: one message-pass step conditioned on input embedding x
         if self.config.grad_checkpoint:
             import torch.utils.checkpoint as cp
 
             def f_theta(z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-                def _body(z_: torch.Tensor) -> torch.Tensor:
+                def _body(z_: torch.Tensor, x_: torch.Tensor) -> torch.Tensor:
                     aggregated = self.adjacency.message_pass(z_)
-                    updated, _ = self.node(z_, aggregated)
+                    updated, _ = self.node(z_, aggregated + x_)
                     return cast(torch.Tensor, updated)
 
-                return cast(torch.Tensor, cp.checkpoint(_body, z, use_reentrant=False))
+                return cast(torch.Tensor, cp.checkpoint(_body, z, x, use_reentrant=False))
 
         else:
 
             def f_theta(z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
                 aggregated = self.adjacency.message_pass(z)
-                updated, _ = self.node(z, aggregated)
+                updated, _ = self.node(z, aggregated + x)
                 return cast(torch.Tensor, updated)
 
         # Solve for fixed point
@@ -380,14 +396,18 @@ class PCGTrainer:
         solver_steps = info.get("solver_steps", 0)
         self._solver_steps_history.append(solver_steps)
 
-        # Project to logits
-        logits = self.output_proj(Z_star)  # [B, num_blocks, vocab_size]
-        targets = batch[:, -num_blocks:].reshape(B * num_blocks)
-        logits_flat = logits.reshape(B * num_blocks, self.config.vocab_size)
+        # Autoregressive targets: block i predicts the first token of block i+1.
+        # logits[:, :-1, :] → shape [B, num_blocks-1, vocab_size]
+        # targets: batch[:, block_size::block_size] → shape [B, num_blocks-1]
+        n_pred = num_blocks - 1
+        logits = self.output_proj(Z_star[:, :-1, :])  # [B, n_pred, vocab_size]
+        targets = batch[:, self.config.block_size :: self.config.block_size]  # [B, n_pred]
+        logits_flat = logits.reshape(B * n_pred, self.config.vocab_size)
+        targets_flat = targets.reshape(B * n_pred)
 
         # Compute loss
         total_loss, components = self.loss_fn(
-            logits_flat, targets, self.adjacency.W_structure, Z_star
+            logits_flat, targets_flat, self.adjacency.W_structure, Z_star
         )
 
         # Backward (accumulation-aware)
@@ -579,14 +599,13 @@ class PCGTrainer:
 
                 batch = torch.tensor([context_padded], dtype=torch.long, device=self.device)
                 B, L = batch.shape
-                num_blocks = L // self.config.block_size
 
-                token_embeds = batch.float() / self.config.vocab_size
-                Z0 = token_embeds.reshape(B, num_blocks, self.config.block_size)
+                block_input_tokens = batch[:, :: self.config.block_size]  # [B, num_blocks]
+                Z0 = self._raw_embedding(block_input_tokens)  # [B, num_blocks, block_size]
 
                 def f_theta(z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
                     agg = self.adjacency.message_pass(z)
-                    updated, _ = self._raw_node(z, agg)
+                    updated, _ = self._raw_node(z, agg + x)
                     return cast(torch.Tensor, updated)
 
                 Z_star, _ = self.solver.solve(f_theta, Z0, Z0)

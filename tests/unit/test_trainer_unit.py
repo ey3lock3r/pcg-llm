@@ -421,15 +421,17 @@ class TestGradientCheckpointing:
         batch = torch.randint(0, 256, (2, 64))
 
         config_no_ckpt = _make_config(tmp_path / "no_ckpt", grad_checkpoint=False)
+        torch.manual_seed(0)
         trainer_no = PCGTrainer(config_no_ckpt)
         metrics_no = trainer_no.train_step(batch)
 
         config_ckpt = _make_config(tmp_path / "ckpt", grad_checkpoint=True)
+        # Re-seed so trainer_ck receives the same initial weights as trainer_no.
+        torch.manual_seed(0)
         trainer_ck = PCGTrainer(config_ckpt)
         metrics_ck = trainer_ck.train_step(batch)
 
-        # Both trainers use the same seed (conftest autouse fixture seeds to 0),
-        # so the initial weights and batch are identical → loss should be the same.
+        # Both trainers have identical weights and the same batch → loss should be the same.
         assert abs(metrics_no["loss_total"] - metrics_ck["loss_total"]) < 1e-1, (
             f"Loss mismatch between grad_checkpoint=False ({metrics_no['loss_total']:.4f}) "
             f"and grad_checkpoint=True ({metrics_ck['loss_total']:.4f})"
