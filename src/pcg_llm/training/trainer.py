@@ -110,6 +110,7 @@ class PCGTrainer:
             lambda_sparse=config.lambda_sparse,
             gamma_variance=config.gamma_variance,
             variance_floor=config.variance_floor,
+            ngpt_mode=(config.normalize == "ngpt"),
         )
 
         self.scheduler = RigLSparsitySchedule(
@@ -131,6 +132,11 @@ class PCGTrainer:
         # Token embedding: vocab_size → block_size
         # Each block is represented by its first token; embedding maps token ID → dense vector.
         self.embedding = nn.Embedding(config.vocab_size, config.block_size).to(self.device)
+        # Scale down embedding init: default N(0,1) gives vector norm ≈ √block_size, which
+        # saturates tanh and kills gradients.  std = 1/√block_size gives norm ≈ 1.
+        import math as _math
+
+        nn.init.normal_(self.embedding.weight, std=1.0 / _math.sqrt(config.block_size))
 
         # ------------------------------------------------------------------
         # Keep raw (unwrapped) references for checkpoint save/load
@@ -210,10 +216,14 @@ class PCGTrainer:
 
     def _build_optimizer(self) -> Any:
         """Build optimizer from raw (unwrapped) parameters."""
+        # W_structure is included so that CE-loss gradients propagate to edge
+        # weights (message_pass now uses W_structure).  RigL still controls
+        # topology (drop/grow); the optimizer handles per-edge weight magnitude.
         params = (
             list(self._raw_node.parameters())
             + list(self._raw_output_proj.parameters())
             + list(self._raw_embedding.parameters())
+            + [self.adjacency.W_structure]
         )
 
         if self.config.optimizer == "muon_adamw":
@@ -282,6 +292,8 @@ class PCGTrainer:
         """Restore trainer state from a checkpoint dict (called on rank 0 only)."""
         if "model_state_dict" in ckpt and ckpt["model_state_dict"]:
             self._raw_node.load_state_dict(ckpt["model_state_dict"], strict=False)
+        if "output_proj_state_dict" in ckpt and ckpt["output_proj_state_dict"]:
+            self._raw_output_proj.load_state_dict(ckpt["output_proj_state_dict"], strict=False)
         if "embedding_state_dict" in ckpt and ckpt["embedding_state_dict"]:
             self._raw_embedding.load_state_dict(ckpt["embedding_state_dict"], strict=False)
         if "optimizer_state_dict" in ckpt and ckpt["optimizer_state_dict"]:
@@ -292,7 +304,11 @@ class PCGTrainer:
         if "rigl_mask" in ckpt:
             self.adjacency.mask = ckpt["rigl_mask"].to(self.device)
         if "rigl_weights" in ckpt:
-            self.adjacency.W_structure = ckpt["rigl_weights"].to(self.device)
+            # Update in-place so the optimizer's parameter reference stays valid.
+            # Replacing the tensor entirely would leave the optimizer pointing at the
+            # old tensor and silently update the wrong weights after resume.
+            w = ckpt["rigl_weights"].to(self.device)
+            self.adjacency.W_structure.data.copy_(w)
             self.adjacency.W_structure.requires_grad_(True)
         if "rigl_frozen" in ckpt and ckpt["rigl_frozen"]:
             self.adjacency.freeze()
@@ -314,6 +330,9 @@ class PCGTrainer:
             "step": step,
             "config": self.config.to_dict(),
             "model_state_dict": {k: v.cpu() for k, v in self._raw_node.state_dict().items()},
+            "output_proj_state_dict": {
+                k: v.cpu() for k, v in self._raw_output_proj.state_dict().items()
+            },
             "embedding_state_dict": {
                 k: v.cpu() for k, v in self._raw_embedding.state_dict().items()
             },
@@ -372,14 +391,18 @@ class PCGTrainer:
         block_input_tokens = batch[:, :: self.config.block_size]  # [B, num_blocks]
         Z0 = self.embedding(block_input_tokens)  # [B, num_blocks, block_size]
 
-        # DEQ f_theta: one message-pass step conditioned on input embedding x
+        # DEQ f_theta: one message-pass step conditioned on input embedding x.
+        # apply_norm=False: nGPT projects onto the unit sphere, which is incompatible
+        # with Anderson mixing (linear combinations of unit vectors land off the sphere,
+        # creating a permanent residual that prevents convergence).  Apply the norm
+        # exactly once on the final fixed point after the solver returns.
         if self.config.grad_checkpoint:
             import torch.utils.checkpoint as cp
 
             def f_theta(z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
                 def _body(z_: torch.Tensor, x_: torch.Tensor) -> torch.Tensor:
                     aggregated = self.adjacency.message_pass(z_)
-                    updated, _ = self.node(z_, aggregated + x_)
+                    updated, _ = self.node(z_, aggregated + x_, apply_norm=False)
                     return cast(torch.Tensor, updated)
 
                 return cast(torch.Tensor, cp.checkpoint(_body, z, x, use_reentrant=False))
@@ -388,11 +411,16 @@ class PCGTrainer:
 
             def f_theta(z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
                 aggregated = self.adjacency.message_pass(z)
-                updated, _ = self.node(z, aggregated + x)
+                updated, _ = self.node(z, aggregated + x, apply_norm=False)
                 return cast(torch.Tensor, updated)
 
         # Solve for fixed point
         Z_star, info = self.solver.solve(f_theta, Z0, Z0)
+
+        # Apply normalisation once on the converged fixed point.
+        # For nGPT this projects Z* onto the unit hypersphere.
+        # For standard LayerNorm this is a no-op equivalent (norm is idempotent on the fixed pt).
+        Z_star = cast(PCGNode, self._raw_node)._norm(Z_star)
         solver_steps = info.get("solver_steps", 0)
         self._solver_steps_history.append(solver_steps)
 
@@ -539,10 +567,31 @@ class PCGTrainer:
                 self.step += 1
 
                 if self.step % 10 == 0 and self._is_rank0:
+                    # Compute gradient norms for health diagnostics.
+                    node_gnorm = (
+                        sum(
+                            p.grad.norm().item() ** 2
+                            for p in self._raw_node.parameters()
+                            if p.grad is not None
+                        )
+                        ** 0.5
+                    )
+                    _emb_w = cast(nn.Embedding, self._raw_embedding).weight
+                    emb_gnorm = _emb_w.grad.norm().item() if _emb_w.grad is not None else 0.0
+                    wstruct_gnorm = (
+                        self.adjacency.W_structure.grad.norm().item()
+                        if self.adjacency.W_structure.grad is not None
+                        else 0.0
+                    )
                     logger.info(
                         f"Step {self.step}: loss={metrics['loss_total']:.4f} "
+                        f"ce={metrics.get('loss_crossentropy', 0):.4f} "
                         f"sparsity={metrics['sparsity']:.3f} "
-                        f"solver_steps={metrics['solver_steps']}"
+                        f"solver_steps={metrics['solver_steps']} "
+                        f"var={metrics.get('node_variance', 0):.4f} "
+                        f"|grad|_node={node_gnorm:.3e} "
+                        f"|grad|_emb={emb_gnorm:.3e} "
+                        f"|grad|_Wstruct={wstruct_gnorm:.3e}"
                     )
 
                 if has_wandb:
@@ -605,10 +654,11 @@ class PCGTrainer:
 
                 def f_theta(z: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
                     agg = self.adjacency.message_pass(z)
-                    updated, _ = self._raw_node(z, agg + x)
+                    updated, _ = self._raw_node(z, agg + x, apply_norm=False)
                     return cast(torch.Tensor, updated)
 
                 Z_star, _ = self.solver.solve(f_theta, Z0, Z0)
+                Z_star = cast(PCGNode, self._raw_node)._norm(Z_star)
                 logits = self._raw_output_proj(Z_star[:, -1, :])
                 next_token = logits.argmax(dim=-1).item()
                 tokens.append(int(next_token))

@@ -91,20 +91,32 @@ class TestTrainingResume:
 
         config = self._make_config(str(temp_checkpoint_dir))
 
-        # Uninterrupted reference run: train 60 steps, record last 10 losses
+        # Pre-generate all batches so both runs see EXACTLY the same sequences.
+        # (Re-seeding a generator mid-run gives different batches than continuing
+        # a seeded generator from step 51 onward, which would cause spurious
+        # divergence once training is actually working.)
+        all_train_batches = list(self._make_loader(60, seed=42))
+        eval_batches = list(self._make_loader(10, seed=99))
+
+        # Uninterrupted reference run: train 60 steps, record last 10 losses.
+        # Fix the model-initialisation seed so trainer_ref and trainer1 start
+        # from identical weights.
+        torch.manual_seed(0)
         trainer_ref = PCGTrainer(config=config)
-        for batch in self._make_loader(60, seed=42):
+        for batch in all_train_batches:
             trainer_ref.train_step(batch)
             trainer_ref.step += 1
         ref_losses = []
-        for batch in self._make_loader(10, seed=99):
+        for batch in eval_batches:
             m = trainer_ref.train_step(batch)
             trainer_ref.step += 1
             ref_losses.append(m["loss_total"])
 
-        # Interrupted run: train 50 steps, save, resume, train 10 more steps
+        # Interrupted run: train 50 steps, save, resume, train steps 51-60
+        # using the SAME batches trainer_ref saw at those steps.
+        torch.manual_seed(0)
         trainer1 = PCGTrainer(config=config)
-        for batch in self._make_loader(50, seed=42):
+        for batch in all_train_batches[:50]:
             trainer1.train_step(batch)
             trainer1.step += 1
         ckpt = trainer1.build_checkpoint_dict(50)
@@ -114,18 +126,18 @@ class TestTrainingResume:
         trainer2.resume_if_available()
         assert trainer2.step == 50, "Step should be 50 after resume"
 
-        # Catch up from step 50→60 with same seed
-        for batch in self._make_loader(10, seed=42):
+        # Catch up from step 50→60 with the exact same batches as trainer_ref.
+        for batch in all_train_batches[50:]:
             trainer2.train_step(batch)
             trainer2.step += 1
 
         resumed_losses = []
-        for batch in self._make_loader(10, seed=99):
+        for batch in eval_batches:
             m = trainer2.train_step(batch)
             trainer2.step += 1
             resumed_losses.append(m["loss_total"])
 
-        # SC-002: mean loss difference must be < 0.5%
+        # SC-002: loss difference must be < 0.5% at each post-resume step.
         assert all(
             l == l and l != float("inf") for l in resumed_losses
         ), "Loss must be finite after resume"

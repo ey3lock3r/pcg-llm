@@ -85,17 +85,21 @@ class BlockSparseAdjacency:
     # ------------------------------------------------------------------
 
     def message_pass(self, Z: Tensor) -> Tensor:
-        """Aggregate neighbour messages for each node.
+        """Aggregate neighbour messages for each node via degree-normalised mean.
 
-        For each batch element and each block-node ``i``, the output is the
-        sum of ``Z[b, j, :]`` for all active neighbours ``j`` of ``i``::
+        For each batch element and block-node ``i``, the output is the
+        **mean** (not sum) of ``W_structure[i,j] * Z[b, j, :]`` over active
+        neighbours, normalised by the row degree::
 
-            out[b, i, :] = Σ_{j: mask[i,j]} Z[b, j, :]
+            out[b, i, :] = (1 / deg_i) * Σ_{j: mask[i,j]} W_structure[i,j] * Z[b, j, :]
 
-        The implementation uses a dense fallback: the mask is cast to float
-        and broadcast-multiplied with Z, then summed over the neighbour
-        dimension.  This avoids custom sparse CUDA kernels while remaining
-        correct.
+        Using ``W_structure`` (instead of a binary mask) means the CE loss
+        gradient flows back through edge weights, giving RigL meaningful
+        signal for deciding which dormant edges to grow.  Degree normalisation
+        prevents the aggregated message from scaling with the number of
+        neighbours, which would saturate the downstream tanh nonlinearity.
+
+        Nodes with no active neighbours (deg_i = 0) receive a zero message.
 
         Args:
             Z: Node state tensor of shape ``[B, num_blocks, block_size]``.
@@ -107,8 +111,22 @@ class BlockSparseAdjacency:
         # Recompute only when the device changes (mask is moved once at trainer init).
         if self._mask_float is None or self._mask_float.device != Z.device:
             self._mask_float = self.mask.float().to(Z.device)
-        # Z: [B, N, D]; out[b, i, d] = sum_j mask[i,j] * Z[b, j, d]
-        return torch.einsum("ij,bjd->bid", self._mask_float, Z)
+
+        # Effective weights: W_structure for active edges, 0 for dormant ones.
+        # Explicitly mask so that dormant edges (mask=False) never contribute to
+        # messages even if AdamW has updated their W_structure values away from 0.
+        # Cast to Z.dtype so mixed-precision (BF16) forward passes stay consistent.
+        w = (self.W_structure * self._mask_float).to(device=Z.device, dtype=Z.dtype)  # [N, N]
+
+        # Degree-normalised weighted aggregation.
+        # raw[b, i, d] = Σ_j w[i,j] * Z[b, j, d]
+        raw = torch.einsum("ij,bjd->bid", w, Z)  # [B, N, D]
+
+        # Compute per-node degree (number of active neighbours) for normalisation.
+        # Shape [N], broadcast as [1, N, 1] over [B, N, D].
+        degree = self._mask_float.sum(dim=1)  # [N]
+        degree = degree.clamp(min=1.0).to(dtype=Z.dtype)  # avoid div-by-zero
+        return raw / degree.unsqueeze(0).unsqueeze(-1)  # [1, N, 1]
 
     # ------------------------------------------------------------------
     # RigL drop-and-grow

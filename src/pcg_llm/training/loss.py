@@ -47,6 +47,8 @@ class FreeEnergyLoss:
         variance_floor: float = 0.1,
         gamma_nudge_factor: float = 1.1,
         gamma_nudge_threshold: int = 10,
+        gamma_max: float = 1.0,
+        ngpt_mode: bool = False,
     ) -> None:
         self.vocab_size = vocab_size
         self._lambda_sparse = lambda_sparse
@@ -54,6 +56,8 @@ class FreeEnergyLoss:
         self.variance_floor = variance_floor
         self.gamma_nudge_factor = gamma_nudge_factor
         self.gamma_nudge_threshold = gamma_nudge_threshold
+        self.gamma_max = gamma_max
+        self.ngpt_mode = ngpt_mode
         self._low_variance_streak: int = 0
 
     # ------------------------------------------------------------------
@@ -101,9 +105,21 @@ class FreeEnergyLoss:
         # --- L1 sparsity ---
         l1_loss = self._lambda_sparse * adj_weights.abs().sum()
 
-        # --- Variance hinge ---
-        # var over node and feature dimensions, then mean over batch
-        var_z = Z_star.var(dim=[1, 2]).mean()
+        # --- Variance / angular-spread hinge ---
+        if self.ngpt_mode:
+            # In nGPT mode Z_star is unit-sphere per block [B, N, D].
+            # Element-wise variance is bounded by 1/D ≈ 0.031 (D=32) and can
+            # never reach the 0.1 floor — use angular spread instead:
+            #   spread = 1 − mean‖mean_block‖²   (0 = all same, 1 = isotropic)
+            # This equals the mean pairwise cosine dissimilarity.
+            B, N, D = Z_star.shape
+            mean_z = Z_star.mean(dim=1)  # [B, D]
+            mean_cos_sim = (mean_z * mean_z).sum(dim=-1)  # [B] ≡ ‖mean_z‖²
+            var_z = 1.0 - mean_cos_sim.mean()  # angular spread in [0, 1]
+        else:
+            # Standard: variance over node and feature dimensions.
+            var_z = Z_star.var(dim=[1, 2]).mean()
+
         hinge = torch.clamp(
             torch.tensor(self.variance_floor, device=Z_star.device, dtype=Z_star.dtype) - var_z,
             min=0.0,
@@ -121,7 +137,10 @@ class FreeEnergyLoss:
             self._low_variance_streak = 0
 
         if self._low_variance_streak >= self.gamma_nudge_threshold:
-            self.gamma_variance = self.gamma_variance * self.gamma_nudge_factor
+            self.gamma_variance = min(
+                self.gamma_variance * self.gamma_nudge_factor,
+                self.gamma_max,  # cap prevents gamma from growing unboundedly
+            )
             self._low_variance_streak = 0
 
         metrics = {

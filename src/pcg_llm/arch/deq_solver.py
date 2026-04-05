@@ -310,8 +310,13 @@ class ConstrainedDEQSolver:
                 self.anderson_window,
                 beta=self.anderson_beta,  # used as Tikhonov regularisation in LSQ solve
             )
-            r_norm = residual.norm().item()
-            if r_norm < self.solver_tolerance:
+            # Convergence criterion: change in iterate (||z_next - z||).
+            # This is cheaper than re-evaluating f_theta at z_next and
+            # correctly measures whether the Anderson-mixed z_next has moved
+            # significantly, unlike checking the residual at the *old* z.
+            with torch.no_grad():
+                update_norm = (z_next - z).norm().item()
+            if update_norm < self.solver_tolerance:
                 return z_next, {"converged": True, "solver_steps": step + 1, "method": "anderson"}
             z = z_next
 
